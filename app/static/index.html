@@ -27,7 +27,7 @@ body{
 }
 button,input,select{font:inherit}
 button{cursor:pointer}
-.app{width:100%;max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:92px}
+.app{width:100%;max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:28px}
 .top{
   padding:22px 20px 12px;display:flex;align-items:center;gap:12px;
 }
@@ -126,25 +126,15 @@ button{cursor:pointer}
 .tx-amt{font-size:14px;font-weight:720;white-space:nowrap}
 .del{border:0;background:none;color:#c3c8cc;font-size:17px;line-height:1;padding:6px 4px;display:grid;place-items:center}
 .del:active{color:var(--danger);transform:scale(.9)}
-.prow{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13.5px}
-.prow:last-child{border-bottom:0}
-.prow span:first-child{color:var(--muted)}
 .empty{background:#fff;border-radius:20px;padding:42px 20px;text-align:center;color:var(--muted)}
-.bottom{
-  position:fixed;z-index:20;bottom:0;left:50%;transform:translateX(-50%);
-  width:min(520px,100%);padding:9px 17px calc(9px + env(safe-area-inset-bottom));
-  background:rgba(255,255,255,.94);backdrop-filter:blur(18px);border-top:1px solid rgba(0,0,0,.06);
-  display:grid;grid-template-columns:repeat(4,1fr);gap:4px
-}
-.nav{
-  border:0;background:none;color:#8c9297;padding:5px 0;font-size:10px;display:grid;justify-items:center;gap:3px
-}
-.nav.active{color:#17191b;font-weight:700}
-.nav-icon{font-size:18px;line-height:18px}
 .sheet-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:30;display:none}
 .sheet{
   position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:min(520px,100%);
   background:#fff;border-radius:24px 24px 0 0;padding:10px 20px 30px
+}
+@media(min-width:700px){
+  body{padding:20px 0;background:#eef1f0}
+  .app{background:#f4f6f7;border-radius:32px;box-shadow:0 20px 70px rgba(0,0,0,.1);min-height:calc(100vh - 40px);overflow:hidden}
 }
 .handle{width:42px;height:4px;border-radius:99px;background:#d7dadd;margin:3px auto 18px}
 .sheet h3{margin:0 0 15px;font-size:20px}
@@ -227,12 +217,6 @@ button{cursor:pointer}
   </section>
 </div>
 
-<nav class="bottom">
-  <button class="nav active" id="homeNav"><span class="nav-icon">⌂</span>Home</button>
-  <button class="nav" id="analyticsNav"><span class="nav-icon">▥</span>Analytics</button>
-  <button class="nav" id="transactionsNav"><span class="nav-icon">▤</span>Transactions</button>
-  <button class="nav" id="profileNav"><span class="nav-icon">○</span>Profile</button>
-</nav>
 
 <div class="sheet-backdrop" id="sortSheet">
   <div class="sheet">
@@ -244,14 +228,6 @@ button{cursor:pointer}
       <button data-sort="high">Highest amount</button>
       <button data-sort="low">Lowest amount</button>
     </div>
-  </div>
-</div>
-
-<div class="sheet-backdrop" id="profileSheet">
-  <div class="sheet">
-    <div class="handle"></div>
-    <h3>Profile</h3>
-    <div id="profileBody"></div>
   </div>
 </div>
 
@@ -450,27 +426,19 @@ $('#trendSvg').onclick=e=>{
   const i=Math.max(0,Math.min(chart.pts.length-1,Math.round((e.clientX-r.left)/r.width*(chart.pts.length-1))));
   setTip(i);
 };
-const navs={homeNav:()=>window.scrollTo({top:0,behavior:'smooth'}),
-  analyticsNav:()=>document.querySelector('.stats').scrollIntoView({behavior:'smooth'}),
-  transactionsNav:()=>document.querySelector('.transactions').scrollIntoView({behavior:'smooth'})};
-document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('.nav').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active');
-  (navs[b.id]||openProfile)();
-});
-function openProfile(){
-  const first=docs.length?new Date(docs[docs.length-1].date).toLocaleDateString():'—';
-  $('#profileBody').innerHTML=[
-    ['All-time spend',INR.format(sum(docs))],
-    ['Transactions',docs.length],
-    ['Tracking since',first],
-    ['Add expenses','iPhone Shortcut → POST /api/expenses']
-  ].map(r=>`<div class="prow"><span>${r[0]}</span><b>${esc(r[1])}</b></div>`).join('');
-  $('#profileSheet').style.display='block';
+/* live data: silent poll + instant refresh when the tab becomes visible/focused */
+async function poll(){
+  try{
+    const r=await fetch('/api/expenses?key='+encodeURIComponent(KEY)+'&limit=1000',{cache:'no-store'});
+    if(r.status===401)return;
+    const j=await r.json();
+    docs=j.expenses||[];
+    lastFetch=new Date();stamp();render();
+  }catch(e){/* offline: keep showing what we have */}
 }
-$('#profileSheet').onclick=e=>{
-  if(e.target.id==='profileSheet')$('#profileSheet').style.display='none';
-};
+setInterval(poll,15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
+window.addEventListener('focus',poll);
 $('#allBtn').onclick=()=>{state.preset='all';$('#preset').value='all';render()};
 $('#csv').onclick=()=>{
   const rows=[['date','amount','category','description','payment_method','notes']].concat(
