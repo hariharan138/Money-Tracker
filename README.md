@@ -84,7 +84,7 @@ icon, page lives in `app/static/index.html`):
 - **Live 7-day trend chart** built from your data, tap a point for that day's total
 - **Stats**: today / last 7 days / this month / largest expense
 - List grouped by day with daily subtotals
-- **Delete** (✕ with confirm), **CSV export**
+- **Delete** (✕ with confirm)
 
 A wrong or missing key returns `401`. The key itself is never rendered into
 the page source — the JS reads it from the URL you bookmarked.

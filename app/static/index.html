@@ -70,16 +70,6 @@ button{cursor:pointer}
 .tooltip small{display:block;color:#8b9095;font-weight:500;margin-top:2px}
 .chart-days{display:flex;justify-content:space-between;color:#777e84;font-size:10px;margin-top:-3px}
 .chart-days b{color:#fff}
-.quick{
-  display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 19px
-}
-.quick button{
-  border:0;border-radius:17px;padding:13px;background:#fff;display:flex;align-items:center;
-  justify-content:center;gap:8px;box-shadow:0 3px 15px rgba(0,0,0,.035);font-weight:650
-}
-.quick .primary{background:#202224;color:#fff}
-.quick .round{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#edf0f2}
-.quick .primary .round{background:#3d4246}
 .section-head{display:flex;align-items:center;padding:0 20px 10px}
 .section-head h2{font-size:19px;letter-spacing:-.4px;margin:0;flex:1}
 .section-head a{font-size:12px;color:#666d73;text-decoration:underline;cursor:pointer}
@@ -190,11 +180,6 @@ button{cursor:pointer}
       <div class="chart-days" id="chartDays"></div>
     </div>
   </section>
-
-  <div class="quick">
-    <button id="allBtn"><span class="round">↙</span>All Expenses</button>
-    <button class="primary" id="csv"><span class="round">↗</span>Export</button>
-  </div>
 
   <div class="section-head">
     <h2>Overview</h2>
@@ -444,15 +429,6 @@ async function poll(){
 }setInterval(poll,15000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
 window.addEventListener('focus',poll);
-$('#allBtn').onclick=()=>{state.preset='all';$('#preset').value='all';render()};
-$('#csv').onclick=()=>{
-  const rows=[['date','amount','category','description','payment_method','notes']].concat(
-    filtered().map(d=>[d.date?new Date(d.date).toLocaleString():'',d.amount,d.category,d.description||'',d.payment_method||'',d.notes||''])
-  );
-  const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='expenses.csv';a.click();
-  URL.revokeObjectURL(a.href);
-};
 document.onkeydown=e=>{
   if(e.key==='/'&&!e.metaKey&&!e.ctrlKey&&document.activeElement.tagName!=='INPUT'){e.preventDefault();$('#searchBtn').click()}
   if(e.key==='r'&&!e.metaKey&&!e.ctrlKey&&document.activeElement.tagName!=='INPUT')refresh();

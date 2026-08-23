@@ -122,7 +122,7 @@ def test_view_page_renders_dashboard():
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
     html = r.text
     assert '<link rel="apple-touch-icon" href="/icon-180.png">' in html
-    assert 'id="refresh"' in html and 'id="csv"' in html
+    assert 'id="refresh"' in html
     assert "test-key" not in html  # the secret itself is never rendered into the source
     for feat in ('apple-touch-icon" href="/icon-180.png', 'id="cats"', 'id="preset"',
                  'id="stats"', 'id="sortSheet"', 'buildChart', "Delete this expense",
