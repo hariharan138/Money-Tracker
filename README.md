@@ -79,8 +79,8 @@ icon, page lives in `app/static/index.html`):
 - **Refresh button** (+ `r` key), relative "updated x ago" stamp
 - **Live data**: polls for new expenses every 15 s and refreshes instantly when
   you switch back to the tab — Shortcut entries appear without tapping anything
-- **Filters**: search box, category chips, date presets (this month / all /
-  today / 7d / 30d), sort sheet (newest / oldest / amount)
+- **Filters**: search box, category chips, date presets (defaults to **All
+  time**, plus this month / today / 7d / 30d), sort sheet (newest / oldest / amount)
 - **Live 7-day trend chart** built from your data, tap a point for that day's total
 - **Stats**: today / last 7 days / this month / largest expense
 - List grouped by day with daily subtotals

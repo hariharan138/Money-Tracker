@@ -165,8 +165,8 @@ button{cursor:pointer}
         <div class="hero-period" id="totalSub">This month</div>
       </div>
       <select class="month" id="preset" aria-label="Date range">
+        <option value="all" selected>All time</option>
         <option value="month">This month</option>
-        <option value="all">All time</option>
         <option value="today">Today</option>
         <option value="7">7 days</option>
         <option value="30">30 days</option>
@@ -248,7 +248,7 @@ let raw = $('#bootstrap').textContent.trim();
 let docs = [];
 try { docs = raw && raw !== '__BOOTSTRAP__' ? JSON.parse(raw) : []; } catch(e){ docs=[]; }
 
-const state = {q:'',cats:new Set(),preset:'month',sort:'newest'};
+const state = {q:'',cats:new Set(),preset:'all',sort:'newest'};
 let lastFetch = new Date();
 let chart = null;
 
@@ -297,7 +297,13 @@ function dayLabel(k){
   return dt.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'});
 }
 function render(){
-  const arr=filtered(), total=sum(arr), now=new Date(), todayK=dayKey(now);
+  let arr=filtered(), total=sum(arr), now=new Date(), todayK=dayKey(now);
+  /* never open on an empty-looking screen: if the chosen date window has
+     nothing but older expenses exist, widen to all automatically */
+  if(!arr.length&&docs.length&&!state.q&&!state.cats.size&&state.preset!=='all'){
+    state.preset='all';$('#preset').value='all';
+    arr=filtered();total=sum(arr);
+  }
   const today=sum(docs.filter(d=>dayKey(d.date)===todayK));
   const week=sum(docs.filter(d=>new Date(d.date)>=startOfDay(now)-6*864e5));
   const month=sum(docs.filter(d=>{const x=new Date(d.date);return x.getMonth()===now.getMonth()&&x.getFullYear()===now.getFullYear()}));
@@ -327,7 +333,7 @@ function render(){
     ? '<div class="empty">No expenses match your filters.<br><br><button class="chip on" onclick="clearAll()">Show everything</button></div>'
     : '<div class="empty">No expenses yet.<br><br>Add your first expense from the iPhone Shortcut.</div>';
   $('#list').innerHTML=out;
-  $('#clear').style.visibility=(state.q||state.cats.size||state.preset!=='month')?'visible':'hidden';
+  $('#clear').style.visibility=(state.q||state.cats.size||state.preset!=='all')?'visible':'hidden';
   buildChart();
 }
 function buildChart(){
@@ -374,8 +380,8 @@ function row(d){
   </div>`;
 }
 function clearAll(){
-  state.q='';state.cats.clear();state.preset='month';state.sort='newest';
-  $('#q').value='';$('#preset').value='month';render();
+  state.q='';state.cats.clear();state.preset='all';state.sort='newest';
+  $('#q').value='';$('#preset').value='all';render();
 }
 window.clearAll=clearAll;
 window.del=async id=>{
@@ -435,8 +441,7 @@ async function poll(){
     docs=j.expenses||[];
     lastFetch=new Date();stamp();render();
   }catch(e){/* offline: keep showing what we have */}
-}
-setInterval(poll,15000);
+}setInterval(poll,15000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
 window.addEventListener('focus',poll);
 $('#allBtn').onclick=()=>{state.preset='all';$('#preset').value='all';render()};
@@ -452,7 +457,8 @@ document.onkeydown=e=>{
   if(e.key==='/'&&!e.metaKey&&!e.ctrlKey&&document.activeElement.tagName!=='INPUT'){e.preventDefault();$('#searchBtn').click()}
   if(e.key==='r'&&!e.metaKey&&!e.ctrlKey&&document.activeElement.tagName!=='INPUT')refresh();
 };
-stamp();render();
+try{stamp();render()}catch(e){/* poll() below repaints with fresh data anyway */}
+poll();  // open → show live data immediately, no refresh tap needed
 </script>
 </body>
 </html>
