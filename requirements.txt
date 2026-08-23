@@ -1,0 +1,9 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pymongo>=4.9            # ships AsyncMongoClient; motor is not needed
+pydantic>=2.9
+pydantic-settings>=2.5
+
+# dev only (for test_api.py)
+pytest>=8.0
+httpx>=0.27
