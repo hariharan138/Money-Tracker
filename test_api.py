@@ -128,7 +128,7 @@ def test_view_page_renders_dashboard():
     assert "test-key" not in html  # the secret itself is never rendered into the source
     for feat in ('apple-touch-icon" href="/icon-180.png', 'id="cats"', 'id="preset"',
                  'id="stats"', 'id="sortSheet"', 'buildChart', "Delete this expense",
-                 "setInterval(poll"):
+                 "setInterval(poll", 'id="whoami"'):
         assert feat in html, feat
     assert "profileSheet" not in html and "nav-icon" not in html  # navbar removed
     bootstrap = html.split('type="application/json">')[1].split("</script>")[0]
@@ -172,7 +172,9 @@ def test_view_accepts_every_user_key():
     settings.expense_users = "Wife:wife-secret-key"
     try:
         assert client.get("/?key=test-key").status_code == 200
-        assert client.get("/?key=wife-secret-key").status_code == 200
+        r = client.get("/?key=wife-secret-key")
+        assert r.status_code == 200
+        assert '"Wife"' in r.text.split('id="whoami"')[1].split("</script>")[0]
     finally:
         settings.expense_users = ""
     assert client.get("/?key=nope").status_code == 401

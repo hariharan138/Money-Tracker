@@ -28,7 +28,9 @@ async def view_expenses(
     ).replace("</", "<\\/")  # can't break out of the <script> block
     # re-read each request: tweak index.html and just refresh, no restart needed
     return HTMLResponse(
-        INDEX.read_text(encoding="utf-8").replace("__BOOTSTRAP__", bootstrap),
+        INDEX.read_text(encoding="utf-8")
+        .replace("__BOOTSTRAP__", bootstrap)
+        .replace("__WHOAMI__", json.dumps(user)),  # whose key opened this page
         # without this Safari serves the cached page on the reload
         headers={"Cache-Control": "no-store"},
     )

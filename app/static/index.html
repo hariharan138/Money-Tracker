@@ -218,6 +218,7 @@ button{cursor:pointer}
 </div>
 
 <script id="bootstrap" type="application/json">__BOOTSTRAP__</script>
+<script id="whoami" type="application/json">__WHOAMI__</script>
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
@@ -233,8 +234,14 @@ const emo = c => EMOJI[(c||'').trim().toLowerCase()] || '🏷️';
 let raw = $('#bootstrap').textContent.trim();
 let docs = [];
 try { docs = raw && raw !== '__BOOTSTRAP__' ? JSON.parse(raw) : []; } catch(e){ docs=[]; }
+let ME = '';
+try { ME = JSON.parse($('#whoami').textContent.trim()) || ''; } catch(e){}
+/* each person opens on their own expenses; Everyone is one tap away */
+function myDefault(){
+  return (ME && docs.some(d=>(d.user||'')===ME)) ? new Set([ME]) : new Set();
+}
 
-const state = {q:'',cats:new Set(),users:new Set(),preset:'all',sort:'newest'};
+const state = {q:'',cats:new Set(),users:myDefault(),preset:'all',sort:'newest'};
 let lastFetch = new Date();
 let chart = null;
 
@@ -295,7 +302,9 @@ function render(){
   const week=sum(docs.filter(d=>new Date(d.date)>=startOfDay(now)-6*864e5));
   const month=sum(docs.filter(d=>{const x=new Date(d.date);return x.getMonth()===now.getMonth()&&x.getFullYear()===now.getFullYear()}));
   $('#total').textContent=INR.format(total);
-  $('#totalSub').textContent=(arr.length===docs.length?'':'Filtered · ')+arr.length+' transaction'+(arr.length===1?'':'s');
+  const who=[...state.users];
+  $('#totalSub').textContent=(arr.length===docs.length?'':(who.length===1?who[0]+' · ':'Filtered · '))
+    +arr.length+' transaction'+(arr.length===1?'':'s');
   const biggest=arr.length?Math.max(...arr.map(d=>Number(d.amount||0))):0;
   const byCat=Object.entries(cnt(arr,d=>d.category)).sort((a,b)=>b[1]-a[1]);
   $('#stats').innerHTML=[
@@ -373,7 +382,7 @@ function row(d){
   </div>`;
 }
 function clearAll(){
-  state.q='';state.cats.clear();state.users.clear();state.preset='all';state.sort='newest';
+  state.q='';state.cats.clear();state.users=myDefault();state.preset='all';state.sort='newest';
   $('#q').value='';$('#preset').value='all';render();
 }
 window.clearAll=clearAll;
