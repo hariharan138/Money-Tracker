@@ -124,8 +124,9 @@ def test_view_page_renders_dashboard():
     assert '<link rel="apple-touch-icon" href="/icon-180.png">' in html
     assert 'id="refresh"' in html and 'id="csv"' in html
     assert "test-key" not in html  # the secret itself is never rendered into the source
-    for feat in ("id=\"cats\"", "id=\"preset\"", "id=\"sort\"", "id=\"stats\"",
-                 "id=\"breakdown\"", "Delete this expense"):
+    for feat in ('apple-touch-icon" href="/icon-180.png', 'id="cats"', 'id="preset"',
+                 'id="stats"', 'id="sortSheet"', 'id="profileSheet"', 'buildChart',
+                 "Delete this expense"):
         assert feat in html, feat
     bootstrap = html.split('type="application/json">')[1].split("</script>")[0]
     doc = json.loads(bootstrap.replace("<\\/", "</"))

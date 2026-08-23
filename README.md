@@ -6,7 +6,9 @@ FastAPI + MongoDB Atlas endpoint for logging expenses from an iPhone Shortcut.
 main.py                # run this: `python main.py`
 app/
 ├── main.py            # app, 400 handler, /health, icon routes
-├── static/            # app icons (apple-touch-icon + favicon)
+├── static/
+│   └── index.html     # the dashboard page (route injects expenses into it)
+│   └── *.png          # app icons (apple-touch-icon + favicon)
 ├── config.py          # env vars via pydantic-settings
 ├── database.py        # AsyncMongoClient lifespan + get_collection dependency
 ├── models/expense.py  # ExpenseIn / ExpenseCreated
@@ -72,16 +74,15 @@ Same auth. **200** `{ "success": true, "message": "Expense deleted" }`,
 ### `GET /?key=<SHORTCUT_API_KEY>`
 
 Dashboard for your phone (add to Home Screen — it uses `/icon-180.png` as its
-icon). Everything is client-side on top of the JSON API:
+icon, page lives in `app/static/index.html`):
 
-- **Refresh button** (+ auto-refresh toggle every 60 s, relative "updated x ago")
-- **Filters**: search box, category chips, payment-method chips, date presets
-  (today / yesterday / 7d / 30d / this month / custom range), sort order
-- **Stats**: filtered total, today / last 7 days / this month spend, avg per
-  day, top category, largest expense + a "where it went" breakdown bar
+- **Refresh button** (+ `r` key), relative "updated x ago" stamp
+- **Filters**: search box, category chips, date presets (this month / all /
+  today / 7d / 30d), sort sheet (newest / oldest / amount)
+- **Live 7-day trend chart** built from your data, tap a point for that day's total
+- **Stats**: today / last 7 days / this month / largest expense
 - List grouped by day with daily subtotals
-- Swipe-free **delete** (✕ with confirm), **CSV export** of the filtered view
-- Press <kbd>/</kbd> to search, <kbd>r</kbd> to refresh
+- **Delete** (✕ with confirm), **CSV export**, Profile sheet with all-time facts
 
 A wrong or missing key returns `401`. The key itself is never rendered into
 the page source — the JS reads it from the URL you bookmarked.
