@@ -1,9 +1,10 @@
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .database import lifespan
 from .routes.expenses import router
@@ -33,3 +34,11 @@ async def validation_error(request: Request, exc: RequestValidationError):
 @app.get("/health", tags=["meta"])
 async def health():
     return {"status": "ok"}
+
+
+_STATIC = Path(__file__).parent / "static"
+for _name in ("icon-180.png", "icon-167.png", "icon-152.png", "favicon.png"):
+    @app.get(f"/{_name}", include_in_schema=False, tags=["meta"])  # one route per file
+    async def _icon(name: str = _name) -> FileResponse:
+        return FileResponse(_STATIC / name, media_type="image/png",
+                            headers={"Cache-Control": "public, max-age=86400"})

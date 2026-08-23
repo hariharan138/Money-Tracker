@@ -5,12 +5,13 @@ FastAPI + MongoDB Atlas endpoint for logging expenses from an iPhone Shortcut.
 ```
 main.py                # run this: `python main.py`
 app/
-├── main.py            # app, 400 handler, /health
+├── main.py            # app, 400 handler, /health, icon routes
+├── static/            # app icons (apple-touch-icon + favicon)
 ├── config.py          # env vars via pydantic-settings
 ├── database.py        # AsyncMongoClient lifespan + get_collection dependency
 ├── models/expense.py  # ExpenseIn / ExpenseCreated
-├── routes/expenses.py # POST /api/expenses + X-API-Key auth
-└── routes/view.py     # GET / -> HTML list of expenses
+├── routes/expenses.py # POST/GET/DELETE /api/expenses + key auth
+└── routes/view.py     # GET / -> HTML dashboard
 test_api.py            # smoke test, no DB required
 ```
 
@@ -46,11 +47,44 @@ and Mongo generates the unique `_id` returned as `expense_id`.
 
 Interactive docs: `/docs`. Health check: `/health`.
 
+### `GET /api/expenses`
+
+Auth: `X-API-Key` header **or** `?key=` query param (for the browser).
+
+| param | type | notes |
+|---|---|---|
+| `category` | string | exact match |
+| `payment_method` | string | exact match |
+| `q` | string | case-insensitive search over category/description/notes/payment |
+| `from`, `to` | ISO datetime | filter on `date` |
+| `limit` | int | default 500, max 2000 |
+
+**200**
+```json
+{ "success": true, "count": 1, "expenses": [ { "id": "66c8…", "amount": 500, … } ] }
+```
+
+### `DELETE /api/expenses/{expense_id}`
+
+Same auth. **200** `{ "success": true, "message": "Expense deleted" }`,
+**400** bad id, **404** unknown id.
+
 ### `GET /?key=<SHORTCUT_API_KEY>`
 
-Server-rendered HTML list of every expense, newest first, with a running total.
-Open it in Safari and add it to your Home Screen. The key goes in the query
-string (bookmark it once); a wrong or missing key returns `401`.
+Dashboard for your phone (add to Home Screen — it uses `/icon-180.png` as its
+icon). Everything is client-side on top of the JSON API:
+
+- **Refresh button** (+ auto-refresh toggle every 60 s, relative "updated x ago")
+- **Filters**: search box, category chips, payment-method chips, date presets
+  (today / yesterday / 7d / 30d / this month / custom range), sort order
+- **Stats**: filtered total, today / last 7 days / this month spend, avg per
+  day, top category, largest expense + a "where it went" breakdown bar
+- List grouped by day with daily subtotals
+- Swipe-free **delete** (✕ with confirm), **CSV export** of the filtered view
+- Press <kbd>/</kbd> to search, <kbd>r</kbd> to refresh
+
+A wrong or missing key returns `401`. The key itself is never rendered into
+the page source — the JS reads it from the URL you bookmarked.
 
 ### curl
 
