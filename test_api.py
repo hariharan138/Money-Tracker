@@ -7,6 +7,7 @@ os.environ.setdefault("SHORTCUT_API_KEY", "test-key")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app.config import settings  # noqa: E402
 from app.database import get_collection  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -96,7 +97,7 @@ def test_list_expenses_auth_and_shape():
     assert set(e) == {"id", "amount", "category", "description", "date",
                       "payment_method", "notes", "created_at", "user"}
     assert e["amount"] == 500.0 and e["date"].startswith("2026-08-23T19:30")
-    assert e["user"] == "Me"
+    assert e["user"] == settings.default_user
 
 
 def test_list_filters_build_query():
@@ -144,10 +145,11 @@ def test_icons_served():
 
 
 def test_multi_user_keys_tag_and_filter():
-    from app.config import all_users, settings
+    from app.config import all_users
 
-    settings.expense_users = "Wife:wife-secret-key"
+    orig_default, orig_extra = settings.default_user, settings.expense_users
     settings.default_user = "Hari"
+    settings.expense_users = "Wife:wife-secret-key"
     try:
         assert all_users() == {"test-key": "Hari", "wife-secret-key": "Wife"}
         inserted.clear()
@@ -160,7 +162,17 @@ def test_multi_user_keys_tag_and_filter():
         # resolve_user runs before get_collection; reuse dependency override chain
         client.get("/api/expenses?key=wife-secret-key&user=Wife")
     finally:
-        settings.expense_users = ""
-        settings.default_user = "Me"
+        settings.expense_users = orig_extra
+        settings.default_user = orig_default
     assert last_query["value"] == {"user": "Wife"}
     assert client.get("/api/expenses?key=wrong-user-key").status_code == 401
+
+
+def test_view_accepts_every_user_key():
+    settings.expense_users = "Wife:wife-secret-key"
+    try:
+        assert client.get("/?key=test-key").status_code == 200
+        assert client.get("/?key=wife-secret-key").status_code == 200
+    finally:
+        settings.expense_users = ""
+    assert client.get("/?key=nope").status_code == 401
