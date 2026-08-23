@@ -92,22 +92,21 @@ the page source — the JS reads it from the URL you bookmarked.
 
 ### Multiple people
 
-Every key belongs to a person; the server tags each expense with whoever's
-key sent it (you can't spoof it from the Shortcut). The main key is
-`DEFAULT_USER` ("Me" by default). To add someone:
+Every key belongs to one person and the data is **strictly isolated**: the
+server tags each expense with whoever's key sent it, and every read/delete is
+locked to that user — a key can never see or touch anyone else's expenses.
+The main key is `DEFAULT_USER` ("Me" by default); legacy expenses created
+before multi-user count as the default user's. To add someone:
 
 1. Generate a key for them:
    `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`
 2. Add to the environment (Render → Environment, or `.env` locally):
    ```
    DEFAULT_USER=Hari
-   EXPENSE_USERS=Wife:THE_NEW_KEY
+   EXPENSE_USERS=Ajay:THE_NEW_KEY,user3:ANOTHER_KEY
    ```
 3. Redeploy. On their phone, set up the same Shortcut but with their key as
-   the `X-API-Key` header.
-
-The dashboard shows an "Everyone / per-person" chip row once more than one
-person has expenses, and each transaction is labelled with who logged it.
+   the `X-API-Key` header — they'll see only their own dashboard.
 
 ### curl
 

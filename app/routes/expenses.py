@@ -35,6 +35,14 @@ def resolve_user(
 require_api_key = resolve_user
 
 
+def user_scope(user: str) -> dict:
+    """Every query is locked to one person's documents. Legacy docs created
+    before multi-user existed belong to the default user."""
+    if user == settings.default_user:
+        return {"$or": [{"user": user}, {"user": None}, {"user": {"$exists": False}}]}
+    return {"user": user}
+
+
 def _to_json(d: dict) -> dict:
     return {
         "id": str(d["_id"]),
@@ -71,21 +79,19 @@ async def create_expense(
     return ExpenseCreated(expense_id=str(result.inserted_id))
 
 
-@router.get("/expenses", summary="List expenses (filterable)")
+@router.get("/expenses", summary="List MY expenses")
 async def list_expenses(
     category: str | None = Query(default=None, max_length=100),
     payment_method: str | None = Query(default=None, max_length=100),
-    user: str | None = Query(default=None, max_length=100),
     q: str | None = Query(default=None, max_length=200, description="Search text"),
     date_from: datetime | None = Query(default=None, alias="from"),
     date_to: datetime | None = Query(default=None, alias="to"),
     limit: int = Query(default=500, ge=1, le=2000),
-    _: str = Depends(resolve_user),
+    user: str = Depends(resolve_user),
     collection: AsyncCollection = Depends(get_collection),
 ) -> dict:
-    query: dict = {}
-    if user:
-        query["user"] = user
+    # a key can only ever read its own expenses; no ?user= override exists
+    query: dict = user_scope(user)
     if category:
         query["category"] = category
     if payment_method:
@@ -113,10 +119,10 @@ async def list_expenses(
     return {"success": True, "count": len(docs), "expenses": [_to_json(d) for d in docs]}
 
 
-@router.delete("/expenses/{expense_id}", summary="Delete an expense")
+@router.delete("/expenses/{expense_id}", summary="Delete one of MY expenses")
 async def delete_expense(
     expense_id: str,
-    _: str = Depends(resolve_user),
+    user: str = Depends(resolve_user),
     collection: AsyncCollection = Depends(get_collection),
 ) -> dict:
     try:
@@ -124,7 +130,8 @@ async def delete_expense(
     except (InvalidId, TypeError):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid expense id")
     try:
-        result = await collection.delete_one({"_id": oid})
+        # ownership check baked into the delete itself: 404 for other people's docs
+        result = await collection.delete_one({"_id": oid, **user_scope(user)})
     except PyMongoError:
         log.exception("delete failed")
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Database error")

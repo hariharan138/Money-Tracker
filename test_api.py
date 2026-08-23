@@ -128,7 +128,7 @@ def test_view_page_renders_dashboard():
     assert "test-key" not in html  # the secret itself is never rendered into the source
     for feat in ('apple-touch-icon" href="/icon-180.png', 'id="cats"', 'id="preset"',
                  'id="stats"', 'id="sortSheet"', 'buildChart', "Delete this expense",
-                 "setInterval(poll", 'id="whoami"'):
+                 "setInterval(poll"):
         assert feat in html, feat
     assert "profileSheet" not in html and "nav-icon" not in html  # navbar removed
     bootstrap = html.split('type="application/json">')[1].split("</script>")[0]
@@ -144,7 +144,7 @@ def test_icons_served():
         assert r.content[:8] == b"\x89PNG\r\n\x1a\n"
 
 
-def test_multi_user_keys_tag_and_filter():
+def test_multi_user_isolation():
     from app.config import all_users
 
     orig_default, orig_extra = settings.default_user, settings.expense_users
@@ -158,23 +158,52 @@ def test_multi_user_keys_tag_and_filter():
         assert client.post("/api/expenses", json={"amount": 7, "category": "Food"},
                            headers=HEAD).status_code == 201
         assert [d["user"] for d in inserted] == ["Wife", "Hari"]
+        # listing is FORCED to the caller's own docs — ?user= can't override
         last_query.clear()
-        # resolve_user runs before get_collection; reuse dependency override chain
-        client.get("/api/expenses?key=wife-secret-key&user=Wife")
+        client.get("/api/expenses?key=wife-secret-key")
+        assert last_query["value"] == {"user": "Wife"}
     finally:
         settings.expense_users = orig_extra
         settings.default_user = orig_default
-    assert last_query["value"] == {"user": "Wife"}
     assert client.get("/api/expenses?key=wrong-user-key").status_code == 401
 
 
-def test_view_accepts_every_user_key():
+def test_view_scoped_to_owner_only():
     settings.expense_users = "Wife:wife-secret-key"
     try:
-        assert client.get("/?key=test-key").status_code == 200
-        r = client.get("/?key=wife-secret-key")
+        # Hari (default user) also sees legacy docs without a user field
+        last_query.clear()
+        r = client.get("/?key=test-key")
         assert r.status_code == 200
-        assert '"Wife"' in r.text.split('id="whoami"')[1].split("</script>")[0]
+        scope = last_query["value"]
+        assert {"user": "Hari"} in scope["$or"]
+        assert {"user": {"$exists": False}} in scope["$or"]
+        # Wife's page is hard-locked to her docs
+        last_query.clear()
+        r = client.get("/?key=wife-secret-key")
+        assert r.status_code == 200 and last_query["value"] == {"user": "Wife"}
+        assert 'id="users"' not in r.text  # no cross-user UI
     finally:
         settings.expense_users = ""
     assert client.get("/?key=nope").status_code == 401
+
+
+def test_delete_is_scoped_to_owner():
+    # the delete_one filter must carry the user clause, so one person can
+    # never remove another person's document even with a valid id
+    filters = []
+    orig = FakeCollection.delete_one
+
+    async def spy(self, q):
+        filters.append(q)
+        return type("R", (), {"deleted_count": 1 if "user" in q else 0})()
+
+    FakeCollection.delete_one = spy
+    try:
+        settings.expense_users = "Wife:wife-secret-key"
+        oid = "66c800000000000000000000"
+        r = client.delete(f"/api/expenses/{oid}?key=wife-secret-key")
+        assert r.status_code == 200 and filters[-1]["user"] == "Wife"
+    finally:
+        FakeCollection.delete_one = orig
+        settings.expense_users = ""
