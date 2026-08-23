@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import PyMongoError
 
-from ..config import settings
+from ..config import all_users, settings
 from ..database import get_collection
 from ..models.expense import ExpenseCreated, ExpenseIn, utcnow
 
@@ -17,14 +17,22 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["expenses"])
 
 
-def require_api_key(
+def resolve_user(
     x_api_key: str = Header(default="", alias="X-API-Key"),
     # browsers can't set headers on a plain link, so the view passes ?key=
     key: str = Query(default=""),
-) -> None:
+) -> str:
+    """Any valid key authenticates; returns the display name it belongs to."""
     supplied = x_api_key if x_api_key else key
-    if not supplied or not compare_digest(supplied, settings.shortcut_api_key):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key")
+    if supplied:
+        for api_key, name in all_users().items():
+            if compare_digest(supplied, api_key):
+                return name
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key")
+
+
+# keep the old name working as a plain gate where the user isn't needed
+require_api_key = resolve_user
 
 
 def _to_json(d: dict) -> dict:
@@ -37,6 +45,7 @@ def _to_json(d: dict) -> dict:
         "payment_method": d.get("payment_method"),
         "notes": d.get("notes"),
         "created_at": d["created_at"].isoformat() if d.get("created_at") else None,
+        "user": d.get("user") or settings.default_user,
     }
 
 
@@ -44,15 +53,16 @@ def _to_json(d: dict) -> dict:
     "/expenses",
     status_code=status.HTTP_201_CREATED,
     response_model=ExpenseCreated,
-    dependencies=[Depends(require_api_key)],
     summary="Add an expense",
 )
 async def create_expense(
     expense: ExpenseIn,
+    user: str = Depends(resolve_user),
     collection: AsyncCollection = Depends(get_collection),
 ) -> ExpenseCreated:
     doc = expense.model_dump()
     doc["created_at"] = utcnow()
+    doc["user"] = user  # who logged it, from the key they used
     try:
         result = await collection.insert_one(doc)  # Mongo generates the unique _id
     except PyMongoError:
@@ -65,14 +75,17 @@ async def create_expense(
 async def list_expenses(
     category: str | None = Query(default=None, max_length=100),
     payment_method: str | None = Query(default=None, max_length=100),
+    user: str | None = Query(default=None, max_length=100),
     q: str | None = Query(default=None, max_length=200, description="Search text"),
     date_from: datetime | None = Query(default=None, alias="from"),
     date_to: datetime | None = Query(default=None, alias="to"),
     limit: int = Query(default=500, ge=1, le=2000),
-    _: None = Depends(require_api_key),
+    _: str = Depends(resolve_user),
     collection: AsyncCollection = Depends(get_collection),
 ) -> dict:
     query: dict = {}
+    if user:
+        query["user"] = user
     if category:
         query["category"] = category
     if payment_method:
@@ -103,7 +116,7 @@ async def list_expenses(
 @router.delete("/expenses/{expense_id}", summary="Delete an expense")
 async def delete_expense(
     expense_id: str,
-    _: None = Depends(require_api_key),
+    _: str = Depends(resolve_user),
     collection: AsyncCollection = Depends(get_collection),
 ) -> dict:
     try:

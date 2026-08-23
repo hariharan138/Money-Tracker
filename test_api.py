@@ -94,8 +94,9 @@ def test_list_expenses_auth_and_shape():
     assert body["success"] is True and body["count"] == 1
     e = body["expenses"][0]
     assert set(e) == {"id", "amount", "category", "description", "date",
-                      "payment_method", "notes", "created_at"}
+                      "payment_method", "notes", "created_at", "user"}
     assert e["amount"] == 500.0 and e["date"].startswith("2026-08-23T19:30")
+    assert e["user"] == "Me"
 
 
 def test_list_filters_build_query():
@@ -140,3 +141,26 @@ def test_icons_served():
         r = client.get(f"/{name}")
         assert r.status_code == 200 and r.headers["content-type"] == "image/png"
         assert r.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_multi_user_keys_tag_and_filter():
+    from app.config import all_users, settings
+
+    settings.expense_users = "Wife:wife-secret-key"
+    settings.default_user = "Hari"
+    try:
+        assert all_users() == {"test-key": "Hari", "wife-secret-key": "Wife"}
+        inserted.clear()
+        assert client.post("/api/expenses", json={"amount": 5, "category": "Food"},
+                           headers={"X-API-Key": "wife-secret-key"}).status_code == 201
+        assert client.post("/api/expenses", json={"amount": 7, "category": "Food"},
+                           headers=HEAD).status_code == 201
+        assert [d["user"] for d in inserted] == ["Wife", "Hari"]
+        last_query.clear()
+        # resolve_user runs before get_collection; reuse dependency override chain
+        client.get("/api/expenses?key=wife-secret-key&user=Wife")
+    finally:
+        settings.expense_users = ""
+        settings.default_user = "Me"
+    assert last_query["value"] == {"user": "Wife"}
+    assert client.get("/api/expenses?key=wrong-user-key").status_code == 401

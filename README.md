@@ -57,6 +57,7 @@ Auth: `X-API-Key` header **or** `?key=` query param (for the browser).
 |---|---|---|
 | `category` | string | exact match |
 | `payment_method` | string | exact match |
+| `user` | string | filter to one person (multi-user setups) |
 | `q` | string | case-insensitive search over category/description/notes/payment |
 | `from`, `to` | ISO datetime | filter on `date` |
 | `limit` | int | default 500, max 2000 |
@@ -88,6 +89,25 @@ icon, page lives in `app/static/index.html`):
 
 A wrong or missing key returns `401`. The key itself is never rendered into
 the page source — the JS reads it from the URL you bookmarked.
+
+### Multiple people
+
+Every key belongs to a person; the server tags each expense with whoever's
+key sent it (you can't spoof it from the Shortcut). The main key is
+`DEFAULT_USER` ("Me" by default). To add someone:
+
+1. Generate a key for them:
+   `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`
+2. Add to the environment (Render → Environment, or `.env` locally):
+   ```
+   DEFAULT_USER=Hari
+   EXPENSE_USERS=Wife:THE_NEW_KEY
+   ```
+3. Redeploy. On their phone, set up the same Shortcut but with their key as
+   the `X-API-Key` header.
+
+The dashboard shows an "Everyone / per-person" chip row once more than one
+person has expenses, and each transaction is labelled with who logged it.
 
 ### curl
 

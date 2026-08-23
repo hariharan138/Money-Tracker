@@ -192,6 +192,7 @@ button{cursor:pointer}
   </div>
 
   <div class="filters" id="cats"></div>
+  <div class="filters" id="users" style="padding-top:0"></div>
 
   <section class="transactions">
     <div class="section-head" style="padding-left:2px;padding-right:2px">
@@ -233,7 +234,7 @@ let raw = $('#bootstrap').textContent.trim();
 let docs = [];
 try { docs = raw && raw !== '__BOOTSTRAP__' ? JSON.parse(raw) : []; } catch(e){ docs=[]; }
 
-const state = {q:'',cats:new Set(),preset:'all',sort:'newest'};
+const state = {q:'',cats:new Set(),users:new Set(),preset:'all',sort:'newest'};
 let lastFetch = new Date();
 let chart = null;
 
@@ -258,6 +259,7 @@ function filtered(){
     if(lo&&t<lo.getTime())return false;
     if(hi&&t>hi.getTime())return false;
     if(state.cats.size&&!state.cats.has(d.category))return false;
+    if(state.users.size&&!state.users.has(d.user||''))return false;
     if(q){
       const hay=((d.category||'')+' '+(d.description||'')+' '+(d.notes||'')+' '+(d.payment_method||'')).toLowerCase();
       if(!hay.includes(q))return false;
@@ -285,7 +287,7 @@ function render(){
   let arr=filtered(), total=sum(arr), now=new Date(), todayK=dayKey(now);
   /* never open on an empty-looking screen: if the chosen date window has
      nothing but older expenses exist, widen to all automatically */
-  if(!arr.length&&docs.length&&!state.q&&!state.cats.size&&state.preset!=='all'){
+  if(!arr.length&&docs.length&&!state.q&&!state.cats.size&&!state.users.size&&state.preset!=='all'){
     state.preset='all';$('#preset').value='all';
     arr=filtered();total=sum(arr);
   }
@@ -306,6 +308,11 @@ function render(){
   const cats=[...new Set(docs.map(d=>d.category).filter(Boolean))].sort();
   $('#cats').innerHTML='<button class="chip '+(!state.cats.size?'on':'')+'" data-v="">All</button>'+
     cats.map(c=>`<button class="chip ${state.cats.has(c)?'on':''}" data-v="${esc(c)}">${emo(c)} ${esc(c)}</button>`).join('');
+  const people=[...new Set(docs.map(d=>d.user||'').filter(Boolean))];
+  $('#users').innerHTML=people.length>1?
+    '<button class="chip '+(!state.users.size?'on':'')+'" data-u="">Everyone</button>'+
+    people.sort().map(u=>`<button class="chip ${state.users.has(u)?'on':''}" data-u="${esc(u)}">${esc(u)}</button>`).join(''):'';
+  $('#users').style.display=people.length>1?'flex':'none';
 
   const groups=new Map();
   for(const d of arr){const k=dayKey(d.date);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(d)}
@@ -318,7 +325,7 @@ function render(){
     ? '<div class="empty">No expenses match your filters.<br><br><button class="chip on" onclick="clearAll()">Show everything</button></div>'
     : '<div class="empty">No expenses yet.<br><br>Add your first expense from the iPhone Shortcut.</div>';
   $('#list').innerHTML=out;
-  $('#clear').style.visibility=(state.q||state.cats.size||state.preset!=='all')?'visible':'hidden';
+  $('#clear').style.visibility=(state.q||state.cats.size||state.users.size||state.preset!=='all')?'visible':'hidden';
   buildChart();
 }
 function buildChart(){
@@ -351,6 +358,7 @@ function setTip(i){
   $('#tooltip').innerHTML=
     `${INR.format(totals[i])}<small>Selected day</small>`;
 }
+const MULTI = new Set(docs.map(d=>d.user||'')).size>1;
 function row(d){
   const t=d.date?new Date(d.date).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
   return `<div class="tx">
@@ -358,14 +366,14 @@ function row(d){
     <div class="tx-main">
       <div class="tx-cat">${esc(d.category||'Expense')}</div>
       <div class="tx-desc">${esc(d.description||d.notes||'Expense')}</div>
-      <div class="tx-meta">${esc(t)}${d.payment_method?' · '+esc(d.payment_method):''}</div>
+      <div class="tx-meta">${esc(t)}${d.payment_method?' · '+esc(d.payment_method):''}${MULTI&&d.user?' · '+esc(d.user):''}</div>
     </div>
     <div class="tx-amt">-${INR.format(Number(d.amount||0))}</div>
     <button class="del" title="Delete" onclick="del('${esc(d.id)}')">×</button>
   </div>`;
 }
 function clearAll(){
-  state.q='';state.cats.clear();state.preset='all';state.sort='newest';
+  state.q='';state.cats.clear();state.users.clear();state.preset='all';state.sort='newest';
   $('#q').value='';$('#preset').value='all';render();
 }
 window.clearAll=clearAll;
@@ -409,6 +417,12 @@ $('#cats').onclick=e=>{
   const b=e.target.closest('.chip');if(!b)return;
   if(!b.dataset.v)state.cats.clear();
   else state.cats.has(b.dataset.v)?state.cats.delete(b.dataset.v):state.cats.add(b.dataset.v);
+  render();
+};
+$('#users').onclick=e=>{
+  const b=e.target.closest('.chip');if(!b||b.dataset.u===undefined)return;
+  if(!b.dataset.u)state.users.clear();
+  else state.users.has(b.dataset.u)?state.users.delete(b.dataset.u):state.users.add(b.dataset.u);
   render();
 };
 $('#trendSvg').onclick=e=>{
