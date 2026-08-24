@@ -13,11 +13,22 @@ _client: AsyncMongoClient | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """One client for the whole process; pymongo pools connections internally."""
+    """One client for the whole process; pymongo pools connections internally.
+    Optimized for faster cold starts on Render.com free tier."""
     global _client
-    _client = AsyncMongoClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
-    await _client.admin.command("ping")  # fail fast on bad URI / IP allowlist
-    log.info("connected to MongoDB")
+    try:
+        # Faster timeout for cold starts (3 seconds instead of 5)
+        _client = AsyncMongoClient(
+            settings.mongodb_uri, 
+            serverSelectionTimeoutMS=3000,
+            connectTimeoutMS=3000,
+            socketTimeoutMS=3000
+        )
+        await _client.admin.command("ping")  # fail fast on bad URI / IP allowlist
+        log.info("connected to MongoDB")
+    except Exception as e:
+        log.error(f"Failed to connect to MongoDB: {e}")
+        raise
     yield
     await _client.close()
 

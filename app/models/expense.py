@@ -7,6 +7,15 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def ensure_utc(dt: datetime) -> datetime:
+    """Ensure datetime is in UTC timezone."""
+    if dt.tzinfo is None:
+        # Assume naive datetimes are UTC
+        return dt.replace(tzinfo=timezone.utc)
+    # Convert to UTC if it has a different timezone
+    return dt.astimezone(timezone.utc)
+
+
 class ExpenseIn(BaseModel):
     """What the Shortcut posts."""
 
@@ -21,7 +30,17 @@ class ExpenseIn(BaseModel):
     @classmethod
     def _date_or_now(cls, v):
         # Shortcuts sends "" or null when a Magic Variable is empty.
-        return v if v not in (None, "") else utcnow()
+        if v in (None, ""):
+            return utcnow()
+        # Ensure the date is in UTC
+        if isinstance(v, datetime):
+            return ensure_utc(v)
+        # If it's a string, parse it and ensure UTC
+        try:
+            parsed = datetime.fromisoformat(v.replace('Z', '+00:00'))
+            return ensure_utc(parsed)
+        except (ValueError, AttributeError):
+            return utcnow()
 
     @field_validator("category", "description", "payment_method", "notes", mode="before")
     @classmethod

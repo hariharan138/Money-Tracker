@@ -42,6 +42,16 @@ class FakeCollection:
                 "payment_method": "UPI",
                 "notes": None,
                 "created_at": __import__("datetime").datetime(2026, 8, 23, 19, 30),
+            },
+            {
+                "_id": "66c8" + "1" * 20,
+                "amount": 200.0,
+                "category": "Transport",
+                "description": "Auto",
+                "date": __import__("datetime").datetime(2026, 8, 23, 20, 30),
+                "payment_method": "Cash",
+                "notes": None,
+                "created_at": __import__("datetime").datetime(2026, 8, 23, 20, 30),
             }
         ]
 
@@ -85,6 +95,27 @@ def test_explicit_date_kept():
                 json={"amount": 12, "category": "Food", "date": "2026-08-23T19:30:00"},
                 headers=HEAD)
     assert inserted[0]["date"].hour == 19
+    # Ensure timezone is UTC
+    assert inserted[0]["date"].tzinfo is not None
+
+
+def test_date_timezone_handling():
+    """Test that dates are properly converted to UTC."""
+    inserted.clear()
+    # Test with naive datetime (should be treated as UTC)
+    client.post("/api/expenses",
+                json={"amount": 15, "category": "Food", "date": "2026-08-23T19:30:00"},
+                headers=HEAD)
+    assert inserted[0]["date"].tzinfo is not None
+    assert inserted[0]["date"].hour == 19  # Hour should be preserved
+    
+    # Test with empty date (should default to current UTC time)
+    inserted.clear()
+    client.post("/api/expenses",
+                json={"amount": 20, "category": "Food", "date": ""},
+                headers=HEAD)
+    assert inserted[0]["date"].tzinfo is not None
+    assert inserted[0]["created_at"].tzinfo is not None
 
 
 def test_list_expenses_auth_and_shape():
@@ -92,7 +123,7 @@ def test_list_expenses_auth_and_shape():
     r = client.get("/api/expenses?key=test-key")          # query key works for browsers
     assert r.status_code == 200
     body = r.json()
-    assert body["success"] is True and body["count"] == 1
+    assert body["success"] is True and body["count"] == 2
     e = body["expenses"][0]
     assert set(e) == {"id", "amount", "category", "description", "date",
                       "payment_method", "notes", "created_at", "user"}
@@ -106,6 +137,13 @@ def test_list_filters_build_query():
     assert q["category"] == "Food"
     assert q["date"]["$gte"].day == 1 and q["date"]["$lte"].month == 8
     assert "$or" in q
+
+
+def test_payment_method_filter():
+    """Test that payment method filtering works in the API."""
+    client.get("/api/expenses?key=test-key&payment_method=UPI")
+    q = last_query["value"]
+    assert q["payment_method"] == "UPI"
 
 
 def test_delete_validation_and_flow():
@@ -128,12 +166,13 @@ def test_view_page_renders_dashboard():
     assert "test-key" not in html  # the secret itself is never rendered into the source
     for feat in ('apple-touch-icon" href="/icon-180.png', 'id="cats"', 'id="preset"',
                  'id="stats"', 'id="sortSheet"', 'buildChart', "Delete this expense",
-                 "setInterval(poll"):
+                 "startPolling", 'id="paymentMethods"', 'filter-labels'):
         assert feat in html, feat
     assert "profileSheet" not in html and "nav-icon" not in html  # navbar removed
     bootstrap = html.split('type="application/json">')[1].split("</script>")[0]
-    doc = json.loads(bootstrap.replace("<\\/", "</"))
-    assert doc[0]["category"] == "Food"
+    docs = json.loads(bootstrap.replace("<\\/", "</"))
+    assert len(docs) == 2  # Two fake expenses in test data
+    assert docs[0]["category"] == "Food"
     assert client.get("/").status_code == 401  # no key -> 401
 
 
@@ -159,7 +198,7 @@ def test_multi_user_isolation():
                            headers=HEAD).status_code == 201
         assert [d["user"] for d in inserted] == ["Wife", "Hari"]
         # listing is FORCED to the caller's own docs — ?user= can't override
-        last_query.clear()
+        last_query["value"] = {}  # Clear instead of clear() method
         client.get("/api/expenses?key=wife-secret-key")
         assert last_query["value"] == {"user": "Wife"}
     finally:

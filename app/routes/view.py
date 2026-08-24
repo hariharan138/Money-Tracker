@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import Response
 from pymongo.asynchronous.collection import AsyncCollection
 
 from ..config import settings
@@ -17,19 +17,27 @@ router = APIRouter(tags=["view"])
 INDEX = Path(__file__).resolve().parent.parent / "static" / "index.html"
 
 
-@router.get("/", response_class=HTMLResponse, summary="View MY expenses")
+@router.get("/", summary="View MY expenses")
 async def view_expenses(
     # any valid user key opens the dashboard — but only that user's expenses
     user: str = Depends(resolve_user),
     collection: AsyncCollection = Depends(get_collection),
-) -> HTMLResponse:
+) -> Response:
     docs = await collection.find(user_scope(user)).sort("date", -1).to_list(500)
     bootstrap = json.dumps(
         [_to_json(d) for d in docs], ensure_ascii=False, separators=(",", ":")
     ).replace("</", "<\\/")  # can't break out of the <script> block
     # re-read each request: tweak index.html and just refresh, no restart needed
-    return HTMLResponse(
-        INDEX.read_text(encoding="utf-8").replace("__BOOTSTRAP__", bootstrap),
-        # without this Safari serves the cached page on the reload
-        headers={"Cache-Control": "no-store"},
+    html_content = INDEX.read_text(encoding="utf-8")
+    html_content = html_content.replace("__BOOTSTRAP__", bootstrap)
+    # Inject environment-specific poll interval
+    poll_interval = settings.frontend_poll_interval_ms
+    html_content = html_content.replace(
+        "let pollInterval=300000;", 
+        f"let pollInterval={poll_interval};"
+    )
+    return Response(
+        content=html_content,
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
     )

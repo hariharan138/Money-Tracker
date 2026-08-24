@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from datetime import datetime
@@ -5,13 +6,13 @@ from secrets import compare_digest
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status, Response
 from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import PyMongoError
 
 from ..config import all_users, settings
 from ..database import get_collection
-from ..models.expense import ExpenseCreated, ExpenseIn, utcnow
+from ..models.expense import ExpenseCreated, ExpenseIn, ensure_utc, utcnow
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["expenses"])
@@ -71,6 +72,9 @@ async def create_expense(
     doc = expense.model_dump()
     doc["created_at"] = utcnow()
     doc["user"] = user  # who logged it, from the key they used
+    # Ensure date is stored in UTC
+    if doc.get("date"):
+        doc["date"] = ensure_utc(doc["date"])
     try:
         result = await collection.insert_one(doc)  # Mongo generates the unique _id
     except PyMongoError:
@@ -89,7 +93,7 @@ async def list_expenses(
     limit: int = Query(default=500, ge=1, le=2000),
     user: str = Depends(resolve_user),
     collection: AsyncCollection = Depends(get_collection),
-) -> dict:
+) -> Response:
     # a key can only ever read its own expenses; no ?user= override exists
     query: dict = user_scope(user)
     if category:
@@ -116,7 +120,11 @@ async def list_expenses(
     except PyMongoError:
         log.exception("list failed")
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Database error")
-    return {"success": True, "count": len(docs), "expenses": [_to_json(d) for d in docs]}
+    return Response(
+        content=json.dumps({"success": True, "count": len(docs), "expenses": [_to_json(d) for d in docs]}),
+        media_type="application/json",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+    )
 
 
 @router.delete("/expenses/{expense_id}", summary="Delete one of MY expenses")

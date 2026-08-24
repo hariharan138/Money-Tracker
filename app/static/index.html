@@ -88,7 +88,9 @@ button{cursor:pointer}
   padding:12px 14px;outline:none
 }
 .search:focus{border-color:var(--green)}
-.filters{padding:0 16px 15px;display:flex;gap:8px;overflow:auto;scrollbar-width:none}
+.filters{padding:0 16px 8px;display:flex;gap:8px;overflow:auto;scrollbar-width:none}
+.filters:last-child{padding-bottom:15px}
+.filter-labels{padding:0 20px 8px;display:flex;gap:16px;font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:4px}
 .filters::-webkit-scrollbar{display:none}
 .chip{
   flex:0 0 auto;border:0;background:#e9ecee;color:#555c61;border-radius:999px;
@@ -185,6 +187,10 @@ button{cursor:pointer}
     <h2>Overview</h2>
     <a id="clear">Reset filters</a>
   </div>
+  <div class="filter-labels">
+    <span>Category</span>
+    <span>Payment Method</span>
+  </div>
   <section class="stats" id="stats"></section>
 
   <div class="search-wrap" id="searchWrap">
@@ -192,6 +198,7 @@ button{cursor:pointer}
   </div>
 
   <div class="filters" id="cats"></div>
+  <div class="filters" id="paymentMethods"></div>
 
   <section class="transactions">
     <div class="section-head" style="padding-left:2px;padding-right:2px">
@@ -233,7 +240,7 @@ let raw = $('#bootstrap').textContent.trim();
 let docs = [];
 try { docs = raw && raw !== '__BOOTSTRAP__' ? JSON.parse(raw) : []; } catch(e){ docs=[]; }
 
-const state = {q:'',cats:new Set(),preset:'all',sort:'newest'};
+const state = {q:'',cats:new Set(),paymentMethods:new Set(),preset:'all',sort:'newest'};
 let lastFetch = new Date();
 let chart = null;
 
@@ -258,6 +265,7 @@ function filtered(){
     if(lo&&t<lo.getTime())return false;
     if(hi&&t>hi.getTime())return false;
     if(state.cats.size&&!state.cats.has(d.category))return false;
+    if(state.paymentMethods.size&&!state.paymentMethods.has(d.payment_method))return false;
     if(q){
       const hay=((d.category||'')+' '+(d.description||'')+' '+(d.notes||'')+' '+(d.payment_method||'')).toLowerCase();
       if(!hay.includes(q))return false;
@@ -307,6 +315,10 @@ function render(){
   $('#cats').innerHTML='<button class="chip '+(!state.cats.size?'on':'')+'" data-v="">All</button>'+
     cats.map(c=>`<button class="chip ${state.cats.has(c)?'on':''}" data-v="${esc(c)}">${emo(c)} ${esc(c)}</button>`).join('');
 
+  const paymentMethods=[...new Set(docs.map(d=>d.payment_method).filter(Boolean))].sort();
+  $('#paymentMethods').innerHTML='<button class="chip '+(!state.paymentMethods.size?'on':'')+'" data-pm="">All</button>'+
+    paymentMethods.map(pm=>`<button class="chip ${state.paymentMethods.has(pm)?'on':''}" data-pm="${esc(pm)}">${esc(pm)}</button>`).join('');
+
   const groups=new Map();
   for(const d of arr){const k=dayKey(d.date);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(d)}
   let out='';
@@ -318,7 +330,7 @@ function render(){
     ? '<div class="empty">No expenses match your filters.<br><br><button class="chip on" onclick="clearAll()">Show everything</button></div>'
     : '<div class="empty">No expenses yet.<br><br>Add your first expense from the iPhone Shortcut.</div>';
   $('#list').innerHTML=out;
-  $('#clear').style.visibility=(state.q||state.cats.size||state.preset!=='all')?'visible':'hidden';
+  $('#clear').style.visibility=(state.q||state.cats.size||state.paymentMethods.size||state.preset!=='all')?'visible':'hidden';
   buildChart();
 }
 function buildChart(){
@@ -365,7 +377,7 @@ function row(d){
   </div>`;
 }
 function clearAll(){
-  state.q='';state.cats.clear();state.preset='all';state.sort='newest';
+  state.q='';state.cats.clear();state.paymentMethods.clear();state.preset='all';state.sort='newest';
   $('#q').value='';$('#preset').value='all';render();
 }
 window.clearAll=clearAll;
@@ -376,11 +388,26 @@ window.del=async id=>{
 };
 async function refresh(){
   $('#refresh').textContent='⟳';
+  $('#updated').textContent='Refreshing...';
   try{
-    const r=await fetch('/api/expenses?key='+encodeURIComponent(KEY)+'&limit=1000',{cache:'no-store'});
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),30000); // 30 second timeout
+    const r=await fetch('/api/expenses?key='+encodeURIComponent(KEY)+'&limit=1000',{
+      cache:'no-store',
+      signal:controller.signal
+    });
+    clearTimeout(timeout);
     if(r.status===401){location.href='/';return}
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
     const j=await r.json();docs=j.expenses||[];lastFetch=new Date();stamp();render();
-  }catch(e){stamp('Offline · showing saved data')}
+  }catch(e){
+    if(e.name==='AbortError'){
+      $('#updated').textContent='Server waking up... (cold start)';
+      setTimeout(refresh,2000); // Retry after 2 seconds
+    }else{
+      stamp('Offline · showing saved data');
+    }
+  }
   finally{$('#refresh').textContent='↻'}
 }
 function stamp(note){
@@ -408,7 +435,15 @@ $('#sortSheet').onclick=e=>{
 $('#cats').onclick=e=>{
   const b=e.target.closest('.chip');if(!b)return;
   if(!b.dataset.v)state.cats.clear();
-  else state.cats.has(b.dataset.v)?state.cats.delete(b.dataset.v):state.cats.add(b.dataset.v);
+  else if(state.cats.has(b.dataset.v))state.cats.delete(b.dataset.v);
+  else state.cats.add(b.dataset.v);
+  render();
+};
+$('#paymentMethods').onclick=e=>{
+  const b=e.target.closest('.chip');if(!b)return;
+  if(!b.dataset.pm)state.paymentMethods.clear();
+  else if(state.paymentMethods.has(b.dataset.pm))state.paymentMethods.delete(b.dataset.pm);
+  else state.paymentMethods.add(b.dataset.pm);
   render();
 };
 $('#trendSvg').onclick=e=>{
@@ -417,23 +452,103 @@ $('#trendSvg').onclick=e=>{
   const i=Math.max(0,Math.min(chart.pts.length-1,Math.round((e.clientX-r.left)/r.width*(chart.pts.length-1))));
   setTip(i);
 };
-/* live data: silent poll + instant refresh when the tab becomes visible/focused */
+/* live data: silent poll + instant refresh when the tab becomes visible/focused
+   Aggressive strategy to keep server awake on Render.com:
+   - 5-minute polling when visible
+   - 2-minute lightweight keep-alive pings even when hidden
+   - Immediate refresh on visibility change
+   This dual approach ensures server stays awake regardless of user activity */
+let pollInterval=300000; // 5 minutes - more frequent to prevent sleep
+let pollTimer=null;
+let isWakingUp=false;
 async function poll(){
+  if(isWakingUp)return; // Prevent multiple polls during cold start
   try{
-    const r=await fetch('/api/expenses?key='+encodeURIComponent(KEY)+'&limit=1000',{cache:'no-store'});
-    if(r.status===401)return;
+    isWakingUp=true;
+    $('#updated').textContent='Loading...';
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),30000); // 30 second timeout
+    const r=await fetch('/api/expenses?key='+encodeURIComponent(KEY)+'&limit=1000',{
+      cache:'no-store',
+      signal:controller.signal
+    });
+    clearTimeout(timeout);
+    if(r.status===401){location.href='/';return}
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
     const j=await r.json();
     docs=j.expenses||[];
     lastFetch=new Date();stamp();render();
-  }catch(e){/* offline: keep showing what we have */}
-}setInterval(poll,15000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
+  }catch(e){
+    if(e.name==='AbortError'){
+      $('#updated').textContent='Server waking up... (cold start)';
+      // Retry after 2 seconds for cold start
+      setTimeout(poll,2000);
+    }else{
+      $('#updated').textContent='Offline · showing saved data';
+    }
+  }finally{
+    isWakingUp=false;
+  }
+}
+function startPolling(){
+  if(pollTimer)clearInterval(pollTimer);
+  pollTimer=setInterval(poll,pollInterval);
+}
+function stopPolling(){
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+}
+// Additional keep-alive: ping the server every 2 minutes even when hidden
+let keepAliveTimer=null;
+function startKeepAlive(){
+  if(keepAliveTimer)clearInterval(keepAliveTimer);
+  keepAliveTimer=setInterval(async()=>{
+    try{
+      const controller=new AbortController();
+      const timeout=setTimeout(()=>controller.abort(),10000); // 10 second timeout
+      await fetch('/ping',{
+        cache:'no-store',
+        signal:controller.signal
+      });
+      clearTimeout(timeout);
+      // Also call warmup to ensure database is ready
+      try{
+        const warmupController=new AbortController();
+        const warmupTimeout=setTimeout(()=>warmupController.abort(),5000); // 5 second timeout
+        await fetch('/warmup',{
+          cache:'no-store',
+          signal:warmupController.signal
+        });
+        clearTimeout(warmupTimeout);
+      }catch(e){
+        // Warmup failure is ok - server might still be starting
+      }
+    }catch(e){
+      // Silent failure for keep-alive - will retry on next interval
+    }
+  },120000); // 2 minutes
+}
+function stopKeepAlive(){
+  if(keepAliveTimer){clearInterval(keepAliveTimer);keepAliveTimer=null;}
+}
+// Adaptive polling: keep-alive when hidden, full polling when visible
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){
+    stopPolling(); // save resources when tab not visible
+    startKeepAlive(); // but keep server alive with lightweight pings
+  }else{
+    stopKeepAlive();
+    poll(); // immediate refresh on visibility
+    startPolling();
+  }
+});
 window.addEventListener('focus',poll);
+startPolling(); // start with full polling when page loads
+startKeepAlive(); // also start keep-alive as extra insurance
 document.onkeydown=e=>{
   if(e.key==='/'&&!e.metaKey&&!e.ctrlKey&&document.activeElement.tagName!=='INPUT'){e.preventDefault();$('#searchBtn').click()}
   if(e.key==='r'&&!e.metaKey&&!e.ctrlKey&&document.activeElement.tagName!=='INPUT')refresh();
 };
-try{stamp();render()}catch(e){/* poll() below repaints with fresh data anyway */}
+try{stamp();render()}catch(e){/* startPolling() will refresh with fresh data */}
 poll();  // open → show live data immediately, no refresh tap needed
 </script>
 </body>

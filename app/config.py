@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     # SHORTCUT_API_KEY). The main key's user is named via DEFAULT_USER.
     expense_users: str = ""
     default_user: str = "Me"
+    
+    # Production vs Development settings
+    environment: str = "development"  # "production" or "development"
+    frontend_poll_interval_ms: int = 300000  # 5 minutes - aggressive polling to prevent sleep (changed from 2 minutes)
+    enable_cronjob_ping: bool = True  # Enable /ping endpoint for cronjob.org wake-ups
+    cronjob_ping_interval_minutes: int = 4  # cronjob.org should ping every 4 minutes
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
