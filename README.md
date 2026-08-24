@@ -129,10 +129,9 @@ curl -i -X POST https://YOUR-APP.onrender.com/api/expenses \
 1. **Ask for Input** (Number) → "Amount"
 2. **Ask for Input** (Text) → "Category"   *(or use "Choose from Menu" for fixed categories)*
 3. **Ask for Input** (Text) → "Description"
-4. **Choose from Menu** → prompt: "Payment method", with options **Cash** and **UPI**.
-   Inside the **Cash** branch, add a **Text** action containing `Cash`; inside
-   the **UPI** branch, add a **Text** action containing `UPI`. The menu's
-   **Menu Result** Magic Variable will then be the selected payment method.
+4. Add a **List** action with two items: `Cash` and `UPI`. Immediately after
+   it, add **Choose from List** → prompt: "Payment method". This action
+   produces the selected value as the **Chosen Item** Magic Variable.
 5. **Get Contents of URL**
    - URL: `https://YOUR-APP.onrender.com/api/expenses`
    - Method: **POST**
@@ -147,12 +146,13 @@ curl -i -X POST https://YOUR-APP.onrender.com/api/expenses \
      | `amount` | Number | *Provided Input* (from step 1) |
      | `category` | Text | *Provided Input* (from step 2) |
      | `description` | Text | *Provided Input* (from step 3) |
-     | `payment_method` | Text | *Menu Result* (from step 4 — **not** the Category input) |
+     | `payment_method` | Text | *Chosen Item* (from step 4 — **not** the Category input) |
      | `notes` | Text | *(optional)* |
 
    In the `payment_method` value field, the variable preview must read
-   **Menu Result**. If it says *Provided Input* or your category name, delete
-   that value and insert **Menu Result** again from the Magic Variable picker.
+   **Chosen Item**. If it says *Provided Input*, `Www`, or your category name,
+   delete that value and insert **Chosen Item** again from the Magic Variable
+   picker.
 
 That body is equivalent to:
 
