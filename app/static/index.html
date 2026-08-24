@@ -187,18 +187,12 @@ button{cursor:pointer}
     <h2>Overview</h2>
     <a id="clear">Reset filters</a>
   </div>
-  <div class="filter-labels">
-    <span>Category</span>
-    <span>Payment Method</span>
-  </div>
   <section class="stats" id="stats"></section>
 
   <div class="search-wrap" id="searchWrap">
     <input class="search" id="q" type="search" placeholder="Search description, notes, category…" autocomplete="off">
   </div>
 
-  <div class="filters" id="cats"></div>
-  <div class="filters" id="paymentMethods"></div>
 
   <section class="transactions">
     <div class="section-head" style="padding-left:2px;padding-right:2px">
@@ -240,7 +234,7 @@ let raw = $('#bootstrap').textContent.trim();
 let docs = [];
 try { docs = raw && raw !== '__BOOTSTRAP__' ? JSON.parse(raw) : []; } catch(e){ docs=[]; }
 
-const state = {q:'',cats:new Set(),paymentMethods:new Set(),preset:'all',sort:'newest'};
+const state = {q:'',preset:'all',sort:'newest'};
 let lastFetch = new Date();
 let chart = null;
 
@@ -264,8 +258,6 @@ function filtered(){
     const t=d.date?new Date(d.date).getTime():0;
     if(lo&&t<lo.getTime())return false;
     if(hi&&t>hi.getTime())return false;
-    if(state.cats.size&&!state.cats.has(d.category))return false;
-    if(state.paymentMethods.size&&!state.paymentMethods.has(d.payment_method))return false;
     if(q){
       const hay=((d.category||'')+' '+(d.description||'')+' '+(d.notes||'')+' '+(d.payment_method||'')).toLowerCase();
       if(!hay.includes(q))return false;
@@ -293,7 +285,7 @@ function render(){
   let arr=filtered(), total=sum(arr), now=new Date(), todayK=dayKey(now);
   /* never open on an empty-looking screen: if the chosen date window has
      nothing but older expenses exist, widen to all automatically */
-  if(!arr.length&&docs.length&&!state.q&&!state.cats.size&&state.preset!=='all'){
+  if(!arr.length&&docs.length&&!state.q&&state.preset!=='all'){
     state.preset='all';$('#preset').value='all';
     arr=filtered();total=sum(arr);
   }
@@ -311,14 +303,6 @@ function render(){
     ['Largest',INR.format(biggest),'Single expense']
   ].map(x=>`<div class="stat"><div class="stat-label">${x[0]}</div><div class="stat-value">${x[1]}</div><div class="stat-sub">${x[2]}</div></div>`).join('');
 
-  const cats=[...new Set(docs.map(d=>d.category).filter(Boolean))].sort();
-  $('#cats').innerHTML='<button class="chip '+(!state.cats.size?'on':'')+'" data-v="">All</button>'+
-    cats.map(c=>`<button class="chip ${state.cats.has(c)?'on':''}" data-v="${esc(c)}">${emo(c)} ${esc(c)}</button>`).join('');
-
-  const paymentMethods=[...new Set(docs.map(d=>d.payment_method).filter(Boolean))].sort();
-  $('#paymentMethods').innerHTML='<button class="chip '+(!state.paymentMethods.size?'on':'')+'" data-pm="">All</button>'+
-    paymentMethods.map(pm=>`<button class="chip ${state.paymentMethods.has(pm)?'on':''}" data-pm="${esc(pm)}">${esc(pm)}</button>`).join('');
-
   const groups=new Map();
   for(const d of arr){const k=dayKey(d.date);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(d)}
   let out='';
@@ -330,7 +314,7 @@ function render(){
     ? '<div class="empty">No expenses match your filters.<br><br><button class="chip on" onclick="clearAll()">Show everything</button></div>'
     : '<div class="empty">No expenses yet.<br><br>Add your first expense from the iPhone Shortcut.</div>';
   $('#list').innerHTML=out;
-  $('#clear').style.visibility=(state.q||state.cats.size||state.paymentMethods.size||state.preset!=='all')?'visible':'hidden';
+  $('#clear').style.visibility=(state.q||state.preset!=='all')?'visible':'hidden';
   buildChart();
 }
 function buildChart(){
@@ -377,7 +361,7 @@ function row(d){
   </div>`;
 }
 function clearAll(){
-  state.q='';state.cats.clear();state.paymentMethods.clear();state.preset='all';state.sort='newest';
+  state.q='';state.preset='all';state.sort='newest';
   $('#q').value='';$('#preset').value='all';render();
 }
 window.clearAll=clearAll;
