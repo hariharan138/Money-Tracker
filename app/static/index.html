@@ -262,6 +262,8 @@ button{cursor:pointer}
 const $ = s => document.querySelector(s);
 const KEY = new URLSearchParams(location.search).get('key') || '';
 const INR = new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2});
+// Render's Free instances can take about a minute to wake after idling.
+const COLD_START_TIMEOUT_MS = 90_000;
 const EMOJI = {
   food:'🍜',groceries:'🛒',grocery:'🛒',travel:'✈️',cab:'🚕',fuel:'⛽',
   bills:'🧾',rent:'🏠',health:'💊',fitness:'🏋️',entertainment:'🎬',
@@ -440,7 +442,7 @@ async function refresh(){
   setLoading(true);
   try{
     const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),30000); // 30 second timeout
+    const timeout=setTimeout(()=>controller.abort(),COLD_START_TIMEOUT_MS);
     const r=await fetch('/api/expenses?key='+encodeURIComponent(KEY)+'&limit=1000',{
       cache:'no-store',
       signal:controller.signal
@@ -524,7 +526,7 @@ async function poll(){
     if(waitingForInitialData)setLoading(true);
     $('#updated').textContent='Loading...';
     const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),30000); // 30 second timeout
+    const timeout=setTimeout(()=>controller.abort(),COLD_START_TIMEOUT_MS);
     const r=await fetch('/api/expenses?key='+encodeURIComponent(KEY)+'&limit=1000',{
       cache:'no-store',
       signal:controller.signal
