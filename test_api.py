@@ -73,8 +73,20 @@ def test_missing_or_wrong_key_is_401():
 
 def test_invalid_input_is_400():
     for bad in ({"amount": 0, "category": "Food"}, {"amount": -5, "category": "Food"},
-                {"amount": 10}, {"amount": 10, "category": "  "}):
+                {"amount": 10}, {"amount": 10, "category": "  "},
+                {"amount": 10, "category": "Food", "payment_method": "Hh"}):
         assert client.post("/api/expenses", json=bad, headers=HEAD).status_code == 400
+
+
+def test_payment_method_is_normalised():
+    inserted.clear()
+    r = client.post(
+        "/api/expenses",
+        json={"amount": 10, "category": "Food", "payment_method": "upi"},
+        headers=HEAD,
+    )
+    assert r.status_code == 201
+    assert inserted[0]["payment_method"] == "UPI"
 
 
 def test_create_defaults_and_response():

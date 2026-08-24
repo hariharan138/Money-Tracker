@@ -47,6 +47,18 @@ class ExpenseIn(BaseModel):
     def _blank_to_none(cls, v):
         return v.strip() or None if isinstance(v, str) else v
 
+    @field_validator("payment_method")
+    @classmethod
+    def _normalise_payment_method(cls, v):
+        """Only accept the two methods offered by the Shortcut menu."""
+        if v is None:
+            return None
+        methods = {"cash": "Cash", "upi": "UPI"}
+        try:
+            return methods[v.lower()]
+        except (AttributeError, KeyError):
+            raise ValueError("payment_method must be Cash or UPI")
+
 
 class ExpenseCreated(BaseModel):
     success: bool = True

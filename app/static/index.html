@@ -120,6 +120,12 @@ button{cursor:pointer}
 .del{border:0;background:none;color:#c3c8cc;font-size:17px;line-height:1;padding:6px 4px;display:grid;place-items:center}
 .del:active{color:var(--danger);transform:scale(.9)}
 .empty{background:#fff;border-radius:20px;padding:42px 20px;text-align:center;color:var(--muted)}
+.skeleton-list{background:var(--surface);border-radius:20px;overflow:hidden;box-shadow:0 3px 15px rgba(0,0,0,.035);margin-bottom:14px}
+.skeleton-row{height:72px;padding:13px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line)}
+.skeleton-row:last-child{border-bottom:0}
+.skeleton-block{border-radius:8px;background:linear-gradient(90deg,#eceff0 25%,#f7f8f8 37%,#eceff0 63%);background-size:400% 100%;animation:shimmer 1.25s ease-in-out infinite}
+.skeleton-icon{width:43px;height:43px;border-radius:14px;flex:0 0 43px}.skeleton-copy{flex:1}.skeleton-title{width:42%;height:13px}.skeleton-sub{width:67%;height:10px;margin-top:8px}.skeleton-amount{width:42px;height:13px}
+@keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
 .sheet-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:30;display:none}
 .sheet{
   position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:min(520px,100%);
@@ -143,6 +149,8 @@ button{cursor:pointer}
   .icon-btn,.stat,.list,.empty,.search,.sheet{background:var(--surface);color:var(--text)}
   .icon-btn{color:var(--text);box-shadow:0 2px 12px rgba(0,0,0,.22)}
   .stat,.list{box-shadow:0 3px 15px rgba(0,0,0,.18)}
+  .skeleton-list{box-shadow:0 3px 15px rgba(0,0,0,.18)}
+  .skeleton-block{background:linear-gradient(90deg,#2a2e32 25%,#353a3f 37%,#2a2e32 63%);background-size:400% 100%}
   .tx-icon{background:#2a2e32}
   .chip{background:#2a2e32;color:#d8dde0}
   .chip.on,.sheet-row button.on{background:#f2f4f5;color:#17191b}
@@ -225,6 +233,11 @@ button{cursor:pointer}
       <h2>Transactions</h2>
       <a id="sortBtn">Newest</a>
     </div>
+    <div id="loadingSkeleton" class="skeleton-list" role="status" aria-label="Loading expenses" hidden>
+      <div class="skeleton-row"><div class="skeleton-block skeleton-icon"></div><div class="skeleton-copy"><div class="skeleton-block skeleton-title"></div><div class="skeleton-block skeleton-sub"></div></div><div class="skeleton-block skeleton-amount"></div></div>
+      <div class="skeleton-row"><div class="skeleton-block skeleton-icon"></div><div class="skeleton-copy"><div class="skeleton-block skeleton-title"></div><div class="skeleton-block skeleton-sub"></div></div><div class="skeleton-block skeleton-amount"></div></div>
+      <div class="skeleton-row"><div class="skeleton-block skeleton-icon"></div><div class="skeleton-copy"><div class="skeleton-block skeleton-title"></div><div class="skeleton-block skeleton-sub"></div></div><div class="skeleton-block skeleton-amount"></div></div>
+    </div>
     <div id="list"></div>
   </section>
 </div>
@@ -258,7 +271,14 @@ const emo = c => EMOJI[(c||'').trim().toLowerCase()] || '🏷️';
 
 let raw = $('#bootstrap').textContent.trim();
 let docs = [];
-try { docs = raw && raw !== '__BOOTSTRAP__' ? JSON.parse(raw) : []; } catch(e){ docs=[]; }
+let hasBootstrapData=false;
+try {
+  if(raw && raw !== '__BOOTSTRAP__'){
+    docs=JSON.parse(raw);
+    hasBootstrapData=true;
+  }
+} catch(e){ docs=[]; }
+let waitingForInitialData=!hasBootstrapData;
 
 const state = {q:'',preset:'all',payment:'all',sort:'newest'};
 let lastFetch = new Date();
@@ -278,6 +298,11 @@ function expenseDate(value){
 function dayKey(d){
   const x=expenseDate(d)||new Date(d);
   return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+}
+function setLoading(show){
+  $('#loadingSkeleton').hidden=!show;
+  $('#list').hidden=show;
+  $('#list').setAttribute('aria-busy',String(show));
 }
 function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x;}
 function rangeFor(p){
@@ -412,6 +437,7 @@ window.del=async id=>{
 async function refresh(){
   $('#refresh').textContent='⟳';
   $('#updated').textContent='Refreshing...';
+  setLoading(true);
   try{
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),30000); // 30 second timeout
@@ -425,8 +451,10 @@ async function refresh(){
     const j=await r.json();
     if(j.success && j.expenses){
       docs=j.expenses;
+      waitingForInitialData=false;
       lastFetch=new Date();
       stamp();
+      setLoading(false);
       render();
       $('#updated').textContent='Updated just now';
     }else{
@@ -438,6 +466,7 @@ async function refresh(){
       setTimeout(refresh,2000); // Retry after 2 seconds
     }else{
       console.error('Refresh error:', e);
+      setLoading(false);
       stamp('Offline · showing saved data');
     }
   }
@@ -492,6 +521,7 @@ async function poll(){
   if(isWakingUp)return; // Prevent multiple polls during cold start
   try{
     isWakingUp=true;
+    if(waitingForInitialData)setLoading(true);
     $('#updated').textContent='Loading...';
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),30000); // 30 second timeout
@@ -505,8 +535,10 @@ async function poll(){
     const j=await r.json();
     if(j.success && j.expenses){
       docs=j.expenses;
+      waitingForInitialData=false;
       lastFetch=new Date();
       stamp();
+      setLoading(false);
       render();
     }else{
       throw new Error('Invalid response format');
@@ -518,6 +550,8 @@ async function poll(){
       setTimeout(poll,2000);
     }else{
       console.error('Poll error:', e);
+      waitingForInitialData=false;
+      setLoading(false);
       $('#updated').textContent='Offline · showing saved data';
     }
   }finally{
@@ -582,7 +616,7 @@ document.onkeydown=e=>{
   if(e.key==='/'&&!e.metaKey&&!e.ctrlKey&&document.activeElement.tagName!=='INPUT'){e.preventDefault();$('#searchBtn').click()}
   if(e.key==='r'&&!e.metaKey&&!e.ctrlKey&&document.activeElement.tagName!=='INPUT')refresh();
 };
-try{stamp();render()}catch(e){/* startPolling() will refresh with fresh data */}
+try{stamp();if(waitingForInitialData)setLoading(true);else render()}catch(e){/* startPolling() will refresh with fresh data */}
 poll();  // open → show live data immediately, no refresh tap needed
 </script>
 </body>
