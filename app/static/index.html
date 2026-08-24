@@ -90,7 +90,6 @@ button{cursor:pointer}
 .search:focus{border-color:var(--green)}
 .filters{padding:0 16px 8px;display:flex;gap:8px;overflow:auto;scrollbar-width:none}
 .filters:last-child{padding-bottom:15px}
-.filter-labels{padding:0 20px 8px;display:flex;gap:16px;font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:4px}
 .filters::-webkit-scrollbar{display:none}
 .chip{
   flex:0 0 auto;border:0;background:#e9ecee;color:#555c61;border-radius:999px;
@@ -383,12 +382,22 @@ async function refresh(){
     clearTimeout(timeout);
     if(r.status===401){location.href='/';return}
     if(!r.ok)throw new Error(`HTTP ${r.status}`);
-    const j=await r.json();docs=j.expenses||[];lastFetch=new Date();stamp();render();
+    const j=await r.json();
+    if(j.success && j.expenses){
+      docs=j.expenses;
+      lastFetch=new Date();
+      stamp();
+      render();
+      $('#updated').textContent='Updated just now';
+    }else{
+      throw new Error('Invalid response format');
+    }
   }catch(e){
     if(e.name==='AbortError'){
       $('#updated').textContent='Server waking up... (cold start)';
       setTimeout(refresh,2000); // Retry after 2 seconds
     }else{
+      console.error('Refresh error:', e);
       stamp('Offline · showing saved data');
     }
   }
@@ -416,20 +425,7 @@ $('#sortSheet').onclick=e=>{
   document.querySelectorAll('[data-sort]').forEach(x=>x.classList.remove('on'));b.classList.add('on');
   $('#sortBtn').textContent=b.textContent;$('#sortSheet').style.display='none';render();
 };
-$('#cats').onclick=e=>{
-  const b=e.target.closest('.chip');if(!b)return;
-  if(!b.dataset.v)state.cats.clear();
-  else if(state.cats.has(b.dataset.v))state.cats.delete(b.dataset.v);
-  else state.cats.add(b.dataset.v);
-  render();
-};
-$('#paymentMethods').onclick=e=>{
-  const b=e.target.closest('.chip');if(!b)return;
-  if(!b.dataset.pm)state.paymentMethods.clear();
-  else if(state.paymentMethods.has(b.dataset.pm))state.paymentMethods.delete(b.dataset.pm);
-  else state.paymentMethods.add(b.dataset.pm);
-  render();
-};
+
 $('#trendSvg').onclick=e=>{
   if(!chart)return;
   const r=e.currentTarget.getBoundingClientRect();
@@ -460,14 +456,21 @@ async function poll(){
     if(r.status===401){location.href='/';return}
     if(!r.ok)throw new Error(`HTTP ${r.status}`);
     const j=await r.json();
-    docs=j.expenses||[];
-    lastFetch=new Date();stamp();render();
+    if(j.success && j.expenses){
+      docs=j.expenses;
+      lastFetch=new Date();
+      stamp();
+      render();
+    }else{
+      throw new Error('Invalid response format');
+    }
   }catch(e){
     if(e.name==='AbortError'){
       $('#updated').textContent='Server waking up... (cold start)';
       // Retry after 2 seconds for cold start
       setTimeout(poll,2000);
     }else{
+      console.error('Poll error:', e);
       $('#updated').textContent='Offline · showing saved data';
     }
   }finally{

@@ -139,13 +139,6 @@ def test_list_filters_build_query():
     assert "$or" in q
 
 
-def test_payment_method_filter():
-    """Test that payment method filtering works in the API."""
-    client.get("/api/expenses?key=test-key&payment_method=UPI")
-    q = last_query["value"]
-    assert q["payment_method"] == "UPI"
-
-
 def test_delete_validation_and_flow():
     assert client.delete("/api/expenses/not-an-id?key=test-key").status_code == 400
     oid = "66c800000000000000000000"
@@ -164,11 +157,13 @@ def test_view_page_renders_dashboard():
     assert '<link rel="apple-touch-icon" href="/icon-180.png">' in html
     assert 'id="refresh"' in html
     assert "test-key" not in html  # the secret itself is never rendered into the source
-    for feat in ('apple-touch-icon" href="/icon-180.png', 'id="cats"', 'id="preset"',
+    for feat in ('apple-touch-icon" href="/icon-180.png', 'id="preset"',
                  'id="stats"', 'id="sortSheet"', 'buildChart', "Delete this expense",
-                 "startPolling", 'id="paymentMethods"', 'filter-labels'):
+                 "startPolling"):
         assert feat in html, feat
     assert "profileSheet" not in html and "nav-icon" not in html  # navbar removed
+    assert 'id="paymentMethods"' not in html  # Payment method filters removed
+    assert 'filter-labels' not in html  # Filter labels removed
     bootstrap = html.split('type="application/json">')[1].split("</script>")[0]
     docs = json.loads(bootstrap.replace("<\\/", "</"))
     assert len(docs) == 2  # Two fake expenses in test data
