@@ -129,7 +129,9 @@ curl -i -X POST https://YOUR-APP.onrender.com/api/expenses \
 1. **Ask for Input** (Number) → "Amount"
 2. **Ask for Input** (Text) → "Category"   *(or use "Choose from Menu" for fixed categories)*
 3. **Ask for Input** (Text) → "Description"
-4. **Get Contents of URL**
+4. **Choose from Menu** → prompt: "Payment method", with options **Cash** and **UPI**.
+   The action's **Menu Result** Magic Variable is the selected text.
+5. **Get Contents of URL**
    - URL: `https://YOUR-APP.onrender.com/api/expenses`
    - Method: **POST**
    - Headers:
@@ -143,7 +145,7 @@ curl -i -X POST https://YOUR-APP.onrender.com/api/expenses \
      | `amount` | Number | *Provided Input* (from step 1) |
      | `category` | Text | *Provided Input* (from step 2) |
      | `description` | Text | *Provided Input* (from step 3) |
-     | `payment_method` | Text | `UPI` |
+     | `payment_method` | Text | *Menu Result* (from step 4 — **not** the Category input) |
      | `notes` | Text | *(optional)* |
 
 That body is equivalent to:

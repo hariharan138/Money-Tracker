@@ -9,10 +9,12 @@
 <link rel="apple-touch-icon" sizes="167x167" href="/icon-167.png">
 <link rel="apple-touch-icon" sizes="152x152" href="/icon-152.png">
 <link rel="icon" type="image/png" href="/favicon.png">
-<meta name="theme-color" content="#f5f7f8">
+<meta name="theme-color" content="#f5f7f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151719" media="(prefers-color-scheme: dark)">
 <title>Expenses — Mobile UI</title>
 <style>
 :root{
+  color-scheme:light dark;
   --bg:#f4f6f7; --surface:#fff; --text:#17191b; --muted:#8a9097;
   --line:#e8eaed; --green:#42a66f; --green2:#65c18c;
   --dark:#202224; --dark2:#292b2e; --danger:#ff4d4d;
@@ -124,17 +126,37 @@ button{cursor:pointer}
   background:#fff;border-radius:24px 24px 0 0;padding:10px 20px 30px
 }
 @media(min-width:700px){
-  body{padding:20px 0;background:#eef1f0}
-  .app{background:#f4f6f7;border-radius:32px;box-shadow:0 20px 70px rgba(0,0,0,.1);min-height:calc(100vh - 40px);overflow:hidden}
+  body{padding:20px 0;background:var(--bg)}
+  .app{background:var(--bg);border-radius:32px;box-shadow:0 20px 70px rgba(0,0,0,.1);min-height:calc(100vh - 40px);overflow:hidden}
 }
 .handle{width:42px;height:4px;border-radius:99px;background:#d7dadd;margin:3px auto 18px}
 .sheet h3{margin:0 0 15px;font-size:20px}
 .sheet-row{display:flex;gap:8px;overflow:auto;padding-bottom:5px}
 .sheet-row button{border:0;background:#eef0f1;border-radius:12px;padding:10px 14px}
 .sheet-row button.on{background:#202224;color:#fff}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#151719;--surface:#202326;--text:#f2f4f5;--muted:#a8afb5;
+    --line:#34383c;--dark:#101214;--dark2:#1a1d20;--shadow:0 10px 30px rgba(0,0,0,.28)
+  }
+  html,body,.app{background:var(--bg)}
+  .icon-btn,.stat,.list,.empty,.search,.sheet{background:var(--surface);color:var(--text)}
+  .icon-btn{color:var(--text);box-shadow:0 2px 12px rgba(0,0,0,.22)}
+  .stat,.list{box-shadow:0 3px 15px rgba(0,0,0,.18)}
+  .tx-icon{background:#2a2e32}
+  .chip{background:#2a2e32;color:#d8dde0}
+  .chip.on,.sheet-row button.on{background:#f2f4f5;color:#17191b}
+  .sheet-row button{background:#2a2e32;color:#d8dde0}
+  .search{border-color:var(--line)}
+  .search::placeholder{color:#8f979e}
+  .del{color:#8f979e}
+  .greeting,.stat-label,.stat-sub,.tx-desc{color:var(--muted)}
+  .day-title{color:#aeb4ba}
+  .top{background:var(--bg)}
+}
 @media(min-width:700px){
-  body{padding:20px 0;background:#eef1f0}
-  .app{background:#f4f6f7;border-radius:32px;box-shadow:0 20px 70px rgba(0,0,0,.1);min-height:calc(100vh - 40px);overflow:hidden}
+  body{padding:20px 0;background:var(--bg)}
+  .app{background:var(--bg);border-radius:32px;box-shadow:0 20px 70px rgba(0,0,0,.1);min-height:calc(100vh - 40px);overflow:hidden}
   .bottom{position:sticky;bottom:0;border-radius:0 0 32px 32px}
 }
 </style>
@@ -192,6 +214,11 @@ button{cursor:pointer}
     <input class="search" id="q" type="search" placeholder="Search description, notes, category…" autocomplete="off">
   </div>
 
+  <div class="filters" id="paymentMethods" aria-label="Payment method filter">
+    <button class="chip on" data-payment="all">All</button>
+    <button class="chip" data-payment="upi">UPI</button>
+    <button class="chip" data-payment="cash">Cash</button>
+  </div>
 
   <section class="transactions">
     <div class="section-head" style="padding-left:2px;padding-right:2px">
@@ -233,12 +260,23 @@ let raw = $('#bootstrap').textContent.trim();
 let docs = [];
 try { docs = raw && raw !== '__BOOTSTRAP__' ? JSON.parse(raw) : []; } catch(e){ docs=[]; }
 
-const state = {q:'',preset:'all',sort:'newest'};
+const state = {q:'',preset:'all',payment:'all',sort:'newest'};
 let lastFetch = new Date();
 let chart = null;
 
+/* MongoDB stores dates in UTC, but its JSON representation can omit the
+   offset (for example, "2026-08-23T19:30:00").  Browsers interpret that form
+   as a device-local time, which made server timestamps appear several hours
+   off and sometimes placed them under the wrong day. */
+function expenseDate(value){
+  if(!value)return null;
+  if(value instanceof Date)return value;
+  const text=String(value);
+  const hasTimezone=/(?:Z|[+-]\d{2}:?\d{2})$/i.test(text);
+  return new Date(hasTimezone ? text : text+'Z');
+}
 function dayKey(d){
-  const x=new Date(d);
+  const x=expenseDate(d)||new Date(d);
   return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
 }
 function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x;}
@@ -254,9 +292,11 @@ function filtered(){
   const [lo,hi]=rangeFor(state.preset);
   const q=state.q.trim().toLowerCase();
   let arr=docs.filter(d=>{
-    const t=d.date?new Date(d.date).getTime():0;
+    const date=expenseDate(d.date);
+    const t=date?date.getTime():0;
     if(lo&&t<lo.getTime())return false;
     if(hi&&t>hi.getTime())return false;
+    if(state.payment!=='all' && (d.payment_method||'').trim().toLowerCase()!==state.payment)return false;
     if(q){
       const hay=((d.category||'')+' '+(d.description||'')+' '+(d.notes||'')+' '+(d.payment_method||'')).toLowerCase();
       if(!hay.includes(q))return false;
@@ -264,8 +304,8 @@ function filtered(){
     return true;
   });
   const cmp={
-    newest:(a,b)=>new Date(b.date)-new Date(a.date),
-    oldest:(a,b)=>new Date(a.date)-new Date(b.date),
+    newest:(a,b)=>(expenseDate(b.date)?.getTime()||0)-(expenseDate(a.date)?.getTime()||0),
+    oldest:(a,b)=>(expenseDate(a.date)?.getTime()||0)-(expenseDate(b.date)?.getTime()||0),
     high:(a,b)=>b.amount-a.amount,
     low:(a,b)=>a.amount-b.amount
   }[state.sort];
@@ -288,18 +328,12 @@ function render(){
     state.preset='all';$('#preset').value='all';
     arr=filtered();total=sum(arr);
   }
-  const today=sum(docs.filter(d=>dayKey(d.date)===todayK));
-  const week=sum(docs.filter(d=>new Date(d.date)>=startOfDay(now)-6*864e5));
-  const month=sum(docs.filter(d=>{const x=new Date(d.date);return x.getMonth()===now.getMonth()&&x.getFullYear()===now.getFullYear()}));
+  const today=sum(arr.filter(d=>dayKey(d.date)===todayK));
   $('#total').textContent=INR.format(total);
   $('#totalSub').textContent=(arr.length===docs.length?'':'Filtered · ')+arr.length+' transaction'+(arr.length===1?'':'s');
-  const biggest=arr.length?Math.max(...arr.map(d=>Number(d.amount||0))):0;
-  const byCat=Object.entries(cnt(arr,d=>d.category)).sort((a,b)=>b[1]-a[1]);
   $('#stats').innerHTML=[
     ['Today',INR.format(today),'Spent today'],
-    ['Last 7 days',INR.format(week),'Recent spending'],
-    ['This month',INR.format(month),'Current month'],
-    ['Largest',INR.format(biggest),'Single expense']
+    ['Total',INR.format(total),'Selected expenses']
   ].map(x=>`<div class="stat"><div class="stat-label">${x[0]}</div><div class="stat-value">${x[1]}</div><div class="stat-sub">${x[2]}</div></div>`).join('');
 
   const groups=new Map();
@@ -313,12 +347,15 @@ function render(){
     ? '<div class="empty">No expenses match your filters.<br><br><button class="chip on" onclick="clearAll()">Show everything</button></div>'
     : '<div class="empty">No expenses yet.<br><br>Add your first expense from the iPhone Shortcut.</div>';
   $('#list').innerHTML=out;
-  $('#clear').style.visibility=(state.q||state.preset!=='all')?'visible':'hidden';
+  $('#clear').style.visibility=(state.q||state.preset!=='all'||state.payment!=='all')?'visible':'hidden';
   buildChart();
 }
 function buildChart(){
   const days=[...Array(7)].map((_,i)=>startOfDay(new Date()-(6-i)*864e5));
-  const totals=days.map(d=>sum(docs.filter(t=>dayKey(t.date)===dayKey(d))));
+  const totals=days.map(d=>sum(docs.filter(t=>
+    dayKey(t.date)===dayKey(d) &&
+    (state.payment==='all'||(t.payment_method||'').trim().toLowerCase()===state.payment)
+  )));
   const max=Math.max(...totals,1);
   const W=500,H=150,topPad=24,botPad=28,n=totals.length-1;
   const pts=totals.map((v,i)=>[i*(W/n), H-botPad-(v/max)*(H-topPad-botPad)]);
@@ -347,7 +384,8 @@ function setTip(i){
     `${INR.format(totals[i])}<small>Selected day</small>`;
 }
 function row(d){
-  const t=d.date?new Date(d.date).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
+  const date=expenseDate(d.date);
+  const t=date?date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
   return `<div class="tx">
     <div class="tx-icon">${emo(d.category)}</div>
     <div class="tx-main">
@@ -360,8 +398,10 @@ function row(d){
   </div>`;
 }
 function clearAll(){
-  state.q='';state.preset='all';state.sort='newest';
-  $('#q').value='';$('#preset').value='all';render();
+  state.q='';state.preset='all';state.payment='all';state.sort='newest';
+  $('#q').value='';$('#preset').value='all';
+  document.querySelectorAll('[data-payment]').forEach(b=>b.classList.toggle('on',b.dataset.payment==='all'));
+  render();
 }
 window.clearAll=clearAll;
 window.del=async id=>{
@@ -411,6 +451,13 @@ function stamp(note){
 $('#refresh').onclick=refresh;
 $('#preset').onchange=e=>{state.preset=e.target.value;render()};
 $('#q').oninput=e=>{state.q=e.target.value;render()};
+$('#paymentMethods').onclick=e=>{
+  const b=e.target.closest('[data-payment]');
+  if(!b)return;
+  state.payment=b.dataset.payment;
+  document.querySelectorAll('[data-payment]').forEach(x=>x.classList.toggle('on',x===b));
+  render();
+};
 $('#searchBtn').onclick=()=>{
   const w=$('#searchWrap');w.style.display=w.style.display==='block'?'none':'block';
   if(w.style.display==='block')setTimeout(()=>$('#q').focus(),50);

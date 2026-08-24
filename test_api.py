@@ -162,7 +162,7 @@ def test_view_page_renders_dashboard():
                  "startPolling"):
         assert feat in html, feat
     assert "profileSheet" not in html and "nav-icon" not in html  # navbar removed
-    assert 'id="paymentMethods"' not in html  # Payment method filters removed
+    assert 'id="paymentMethods"' in html  # Cash / UPI payment method filter
     assert 'filter-labels' not in html  # Filter labels removed
     bootstrap = html.split('type="application/json">')[1].split("</script>")[0]
     docs = json.loads(bootstrap.replace("<\\/", "</"))
