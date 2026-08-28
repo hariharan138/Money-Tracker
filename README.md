@@ -15,7 +15,33 @@ app/
 ├── routes/expenses.py # POST/GET/DELETE /api/expenses + key auth
 └── routes/view.py     # GET / -> HTML dashboard
 test_api.py            # smoke test, no DB required
+frontend/              # standalone static dashboard, deploy independently
+├── index.html
+├── app.js
+├── api.js              # centralized primary/secondary API failover
+├── styles.css
+├── package.json
+└── .env.example         # backend URL configuration
 ```
+
+## Deploy the frontend separately
+
+The `frontend/` folder is a small Vite static site. It produces a `dist/`
+folder that can be deployed to Netlify, Vercel, Cloudflare Pages, GitHub Pages,
+or any static host. It does not need a backend process.
+
+1. Deploy the FastAPI API as normal, for example at `https://expenses-api.example.com`.
+2. Copy `frontend/.env.example` to `frontend/.env.local` and set
+   `PRIMARY_API_URL` and `SECONDARY_API_URL`. In your frontend host, set the
+   same build environment variables instead. These are public API origins; do
+   not put API keys or other credentials in frontend environment variables.
+3. Set `CORS_ORIGINS` on **both** API deployments to your frontend origin, e.g.
+   `https://expenses.example.com`. Use commas for multiple origins.
+4. Run `cd frontend && npm install && npm run build`, then deploy `frontend/dist`.
+5. Open the frontend at `https://expenses.example.com/?key=YOUR_API_KEY`.
+
+The API key stays in the browser URL so the static site has no secret embedded
+in its deployed files. Treat that URL as private.
 
 ## API
 

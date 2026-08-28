@@ -18,11 +18,19 @@ class Settings(BaseSettings):
     frontend_poll_interval_ms: int = 300000  # 5 minutes - aggressive polling to prevent sleep (changed from 2 minutes)
     enable_cronjob_ping: bool = True  # Enable /ping endpoint for cronjob.org wake-ups
     cronjob_ping_interval_minutes: int = 4  # cronjob.org should ping every 4 minutes
+    # Comma-separated browser origins allowed to call this API. Set this to
+    # the URL(s) where the standalone dashboard is deployed.
+    cors_origins: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()  # raises at import time if MONGODB_URI / SHORTCUT_API_KEY are missing
+
+
+def cors_origins() -> list[str]:
+    """Return configured frontend origins, ignoring empty values."""
+    return [origin.strip().rstrip("/") for origin in settings.cors_origins.split(",") if origin.strip()]
 
 
 def all_users() -> dict[str, str]:

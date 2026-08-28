@@ -6,11 +6,12 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from .database import lifespan
 from .routes.expenses import router
 from .routes.view import router as view_router
-from .config import settings
+from .config import cors_origins, settings
 
 logging.basicConfig(level=logging.INFO)
 
@@ -29,6 +30,19 @@ app = FastAPI(
     docs_url=None,  # Disable automatic docs to speed up startup
     redoc_url=None,  # Disable ReDoc to speed up startup
 )
+
+# The dashboard can be deployed as a static site on a different domain.  Keep
+# this opt-in so an API isn't unintentionally exposed to every browser origin.
+_cors_origins = cors_origins()
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "X-API-Key"],
+    )
+
 app.include_router(router)
 app.include_router(view_router)
 
