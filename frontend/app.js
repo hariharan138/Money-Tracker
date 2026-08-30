@@ -9,6 +9,10 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Block pinch-zoom / double-tap zoom so the PWA feels like a native app.
+document.addEventListener('gesturestart', event => event.preventDefault());
+document.addEventListener('dblclick', event => event.preventDefault(), { passive: false });
+
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const API_KEY_STORAGE = 'expenses-api-key';
@@ -384,6 +388,7 @@ function updateAddPreview() {
 }
 
 async function load({ quiet = false } = {}) {
+  const reloadBtn = $('#reloadBtn');
   if (!hasApiConfiguration()) {
     $('#status').textContent = 'Set PRIMARY_API_URL and SECONDARY_API_URL in frontend/.env.local';
     syncProfileKeyUi('Backend URLs are not configured', 'err');
@@ -396,7 +401,10 @@ async function load({ quiet = false } = {}) {
     syncProfileKeyUi('Paste your API key, then tap Save & load data');
     return false;
   }
-  if (!quiet) $('#status').textContent = 'Loading expenses…';
+  if (!quiet) {
+    $('#status').textContent = 'Loading expenses…';
+    reloadBtn?.classList.add('is-loading');
+  }
   try {
     const response = await apiFetch(`/api/expenses?key=${encodeURIComponent(KEY)}&limit=1000`, { cache: 'no-store' });
     if (response.status === 401) throw new Error('Invalid API key');
@@ -414,6 +422,8 @@ async function load({ quiet = false } = {}) {
     if (!quiet) $('#status').textContent = message;
     syncProfileKeyUi(message, 'err');
     return false;
+  } finally {
+    reloadBtn?.classList.remove('is-loading');
   }
 }
 
@@ -472,9 +482,31 @@ async function saveExpense(event) {
   }
 
   const saveButton = $('#saveExpense');
+  const tempId = `local-${Date.now()}`;
+  const nowIso = new Date().toISOString();
+  const optimistic = {
+    id: tempId,
+    amount,
+    category,
+    description,
+    payment_method: paymentMethod,
+    notes: null,
+    date: nowIso,
+    created_at: nowIso,
+    user: connectedUserName() || undefined,
+  };
+
+  // Show it in the UI immediately, then upload in the background.
+  expenses = [optimistic, ...expenses];
+  $('#expenseForm').reset();
+  $('#expenseCategory').value = 'Expense';
+  updateAddPreview();
+  error.textContent = '';
+  render();
+  showTab('transactions');
+  $('#status').textContent = 'Saving…';
   saveButton.disabled = true;
   saveButton.textContent = 'Saving…';
-  error.textContent = '';
 
   try {
     const response = await apiFetch(`/api/expenses?key=${encodeURIComponent(KEY)}`, {
@@ -482,39 +514,31 @@ async function saveExpense(event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount, category, description, payment_method: paymentMethod }),
     });
-    if (!response.ok) throw new Error('Could not save this expense.');
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(detail.includes('ReadableStream') ? 'Could not save this expense. Try again.' : 'Could not save this expense.');
+    }
     const created = await response.json().catch(() => ({}));
-    const nowIso = new Date().toISOString();
-    // Update UI immediately — do not wait for a full list refetch (cold API can stall).
-    expenses = [{
-      id: created.expense_id || `local-${Date.now()}`,
-      amount,
-      category,
-      description,
-      payment_method: paymentMethod,
-      notes: null,
-      date: nowIso,
-      created_at: nowIso,
-      user: connectedUserName() || undefined,
-    }, ...expenses];
-    $('#expenseForm').reset();
-    $('#expenseCategory').value = 'Expense';
-    updateAddPreview();
-    render();
-    showTab('transactions');
+    if (created.expense_id) {
+      expenses = expenses.map(item => (item.id === tempId ? { ...item, id: created.expense_id } : item));
+      render();
+    }
     $('#status').textContent = 'Expense saved';
-    // Soft sync in the background; ignore failures so the UI stays snappy.
     load({ quiet: true }).catch(() => {});
   } catch (err) {
+    expenses = expenses.filter(item => item.id !== tempId);
+    render();
+    showTab('add');
     error.textContent = err.message || 'Could not save this expense.';
+    $('#status').textContent = 'Save failed — try again';
   } finally {
     saveButton.disabled = false;
     saveButton.textContent = 'Save expense';
   }
 }
 
-$('#refresh').onclick = load;
-$('#profileRefresh').onclick = load;
+$('#reloadBtn').onclick = () => load();
+$('#profileRefresh').onclick = () => load();
 $('#saveApiKey').onclick = saveApiKey;
 $('#clearApiKey').onclick = clearApiKey;
 $('#apiKeyInput').addEventListener('keydown', event => {
