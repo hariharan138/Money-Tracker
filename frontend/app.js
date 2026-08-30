@@ -57,12 +57,22 @@ let expenses = [];
 const state = { preset: 'all', payment: 'all', q: '', sort: 'newest', chartRange: 'month' };
 
 function dateOf(value) {
-  return new Date(/(?:Z|[+-]\d\d:?\d\d)$/i.test(value || '') ? value : `${value}Z`);
+  if (value instanceof Date) return value;
+  if (value == null || value === '') return new Date(NaN);
+  const text = String(value);
+  // API dates are UTC; strings without a timezone were being treated as UTC via a trailing Z.
+  return new Date(/(?:Z|[+-]\d\d:?\d\d)$/i.test(text) ? text : `${text}Z`);
 }
 
+/** Local calendar day key (YYYY-MM-DD) for grouping / "today" totals. */
 function dayKey(value) {
-  const d = dateOf(value);
+  const d = value instanceof Date ? value : dateOf(value);
+  if (Number.isNaN(d.getTime())) return '';
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function todayKey() {
+  return dayKey(new Date());
 }
 
 function sum(items) {
@@ -110,7 +120,7 @@ function greetingForNow() {
 }
 
 function formatDayLabel(key) {
-  const today = dayKey(new Date());
+  const today = todayKey();
   const yesterday = dayKey(new Date(Date.now() - 864e5));
   if (key === today) return 'Today';
   if (key === yesterday) return 'Yesterday';
@@ -320,7 +330,8 @@ function chartWindowTotal() {
 function render() {
   const items = filtered();
   const total = sum(items);
-  const today = sum(items.filter(item => dayKey(item.date) === dayKey(new Date())));
+  // Overview "Today" is always calendar-today spend (all expenses), not filter-dependent.
+  const today = sum(expenses.filter(item => dayKey(item.date) === todayKey()));
   const allTotal = sum(expenses);
 
   $('#greeting').textContent = greetingForNow();
