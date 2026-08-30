@@ -1,13 +1,14 @@
 {
   "name": "Expenses",
   "short_name": "Expenses",
-  "start_url": "./",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#fafafb",
   "theme_color": "#fafafb",
   "icons": [
     {
-      "src": "icon-180.png",
+      "src": "/icon-180.png",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any maskable"

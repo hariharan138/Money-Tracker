@@ -5,23 +5,43 @@ import { apiFetch, hasApiConfiguration } from './api.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(error => console.warn('Service worker registration failed', error));
+    navigator.serviceWorker.register('/sw.js').catch(error => console.warn('Service worker registration failed', error));
   });
 }
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const API_KEY_STORAGE = 'expenses-api-key';
+
+/** Persist ?key= for Home Screen / PWA launches that open `/` without the query. */
+function readStoredApiKey() {
+  try {
+    return (localStorage.getItem(API_KEY_STORAGE) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function writeStoredApiKey(key) {
+  try {
+    if (key) localStorage.setItem(API_KEY_STORAGE, key);
+    else localStorage.removeItem(API_KEY_STORAGE);
+  } catch {
+    /* private mode / blocked storage */
+  }
+}
+
 const params = new URLSearchParams(location.search);
 const keyFromUrl = (params.get('key') || '').trim();
 if (keyFromUrl) {
-  localStorage.setItem(API_KEY_STORAGE, keyFromUrl);
-  // Keep the shareable link working once, then drop the secret from the address bar.
+  writeStoredApiKey(keyFromUrl);
+  // Keep ?key= working, then drop the secret from the address bar so the
+  // Home Screen bookmark can safely use start_url `/`.
   params.delete('key');
   const clean = `${location.pathname}${params.toString() ? `?${params}` : ''}${location.hash}`;
-  history.replaceState(null, '', clean);
+  history.replaceState(null, '', clean || '/');
 }
-let KEY = keyFromUrl || localStorage.getItem(API_KEY_STORAGE) || '';
+let KEY = keyFromUrl || readStoredApiKey();
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
 const icons = {
   food: '🍜', groceries: '🛒', grocery: '🛒', travel: '✈️', cab: '🚕', fuel: '⛽',
@@ -379,7 +399,7 @@ async function saveApiKey() {
     return;
   }
   KEY = next;
-  localStorage.setItem(API_KEY_STORAGE, KEY);
+  writeStoredApiKey(KEY);
   status.textContent = 'Saved. Loading…';
   status.className = 'profile-key-status';
   if (await load()) showTab('dashboard');
@@ -388,7 +408,7 @@ async function saveApiKey() {
 function clearApiKey() {
   KEY = '';
   expenses = [];
-  localStorage.removeItem(API_KEY_STORAGE);
+  writeStoredApiKey('');
   $('#apiKeyInput').value = '';
   render();
   $('#status').textContent = 'Open Profile and paste your API key';

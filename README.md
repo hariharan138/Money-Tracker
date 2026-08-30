@@ -38,13 +38,19 @@ or any static host. It does not need a backend process.
 3. Set `CORS_ORIGINS` on **both** API deployments to your frontend origin, e.g.
    `https://expenses.example.com`. Use commas for multiple origins.
 4. Run `cd frontend && npm install && npm run build`, then deploy `frontend/dist`.
-5. Open the frontend at `https://expenses.example.com` (no key in the URL).
+5. Open the frontend at `https://expenses.example.com` (no key in the URL),
+   **or** once with `/?key=YOUR_API_KEY`.
 6. Go to **Profile**, paste your API key (`SHORTCUT_API_KEY` or an
    `EXPENSE_USERS` key), and tap **Save & load data**. The key is stored only
    in this browser’s localStorage.
 
-You can still open `/?key=YOUR_API_KEY` once — the app saves it and strips the
-key from the address bar. Treat that one-time URL as private.
+`?key=` still works: the app saves it and strips it from the address bar so
+Home Screen / PWA launches (manifest `start_url: /`) keep working without the
+secret in the URL. Treat one-time `/?key=…` links as private.
+
+**iPhone Home Screen:** open the site once with your key (or save it in
+Profile), then Share → Add to Home Screen. Do **not** rely on `?key=` in the
+Home Screen URL — the saved key in localStorage is what loads your data.
 
 ## API
 
