@@ -3,40 +3,186 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1b1e20">
+  <meta name="theme-color" content="#f5f5f7">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Expenses">
-  <link rel="apple-touch-icon" sizes="180x180" href="https://money-tracker-f6p4.onrender.com/icon-180.png">
-  <link rel="icon" type="image/png" href="https://money-tracker-f6p4.onrender.com/icon-180.png">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+  <link rel="icon" type="image/png" href="icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>Expenses</title>
-  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="app">
-    <header class="topbar">
-      <div><p class="eyebrow">Good morning!</p><h1>My expenses</h1><p id="status" class="sync-status">Your spending overview</p></div>
-      <button id="refresh" class="round" title="Refresh" aria-label="Refresh">↻</button>
-    </header>
+    <!-- 1. Dashboard -->
+    <section class="tab-panel active" data-panel="dashboard">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="greeting">Good morning!</p>
+          <h1>Hari</h1>
+          <p id="status" class="sync-status">Your spending overview</p>
+        </div>
+        <button id="refresh" class="round" title="Refresh" aria-label="Refresh">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </button>
+      </header>
 
-    <section class="hero" aria-label="Expense balance">
-      <div class="hero-orbit orbit-one"></div><div class="hero-orbit orbit-two"></div>
-      <button class="more" type="button" aria-label="More options">•••</button>
-      <p class="card-label">TOTAL SPENT</p><strong id="total">₹0</strong><p id="total-sub">0 transactions</p>
-      <div class="spend-meter" aria-hidden="true"><i></i><b></b><em></em></div>
-      <div class="card-bottom"><span>•••• &nbsp; •••• &nbsp; •••• &nbsp; 2026</span><span class="mark"><i></i><i></i></span></div>
+      <section class="hero" aria-label="Expense balance">
+        <div class="hero-wave" aria-hidden="true"></div>
+        <button class="more" type="button" aria-label="More options">•••</button>
+        <p class="card-label">TOTAL SPENT</p>
+        <strong id="total">₹0</strong>
+        <p id="total-sub">0 transactions</p>
+        <div class="spend-meter" aria-hidden="true"><i></i><b></b><em></em></div>
+        <div class="card-bottom">
+          <span>•••• &nbsp; •••• &nbsp; •••• &nbsp; 2026</span>
+          <span class="mark"><i></i><i></i></span>
+        </div>
+      </section>
+
+      <section class="overview">
+        <h2>Overview</h2>
+        <div id="stats" class="stats"></div>
+      </section>
+
+      <section class="dashboard-recent">
+        <div class="section-title">
+          <h2>Transactions</h2>
+          <button class="link" data-go="transactions">See all</button>
+        </div>
+        <div id="recentPreview" class="preview-list"></div>
+      </section>
     </section>
 
-    <section class="overview"><h2>Transactions</h2><div id="stats" class="stats"></div></section>
-    <section class="controls" aria-label="Transaction filters">
-      <input id="search" type="search" placeholder="Search transactions" autocomplete="off">
-      <div class="filter-row"><div id="payments" class="chips"><button class="active" data-payment="all">All</button><button data-payment="upi">UPI</button><button data-payment="cash">Cash</button></div>
-        <select id="preset" aria-label="Date range"><option value="all">All time</option><option value="month">This month</option><option value="today">Today</option><option value="7">7 days</option><option value="30">30 days</option></select>
-        <select id="sort" aria-label="Sort"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="high">Highest</option><option value="low">Lowest</option></select>
-      </div><div id="trend" class="trend" aria-label="Seven day spending trend"></div>
+    <!-- 2. Transactions by date -->
+    <section class="tab-panel" data-panel="transactions">
+      <header class="page-head">
+        <h1>Transactions</h1>
+        <p class="page-sub">Grouped by date</p>
+      </header>
+      <section class="controls" aria-label="Transaction filters">
+        <input id="search" type="search" placeholder="Search transactions" autocomplete="off">
+        <div class="filter-row">
+          <div id="payments" class="chips">
+            <button class="active" data-payment="all">All</button>
+            <button data-payment="upi">UPI</button>
+            <button data-payment="cash">Cash</button>
+          </div>
+          <select id="preset" aria-label="Date range">
+            <option value="all">All time</option>
+            <option value="month">This month</option>
+            <option value="today">Today</option>
+            <option value="7">7 days</option>
+            <option value="30">30 days</option>
+          </select>
+          <select id="sort" aria-label="Sort">
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="high">Highest</option>
+            <option value="low">Lowest</option>
+          </select>
+        </div>
+      </section>
+      <section class="recent">
+        <div class="section-title">
+          <h2>History</h2>
+          <button id="clear" class="link">Reset</button>
+        </div>
+        <div id="list" aria-live="polite"></div>
+      </section>
     </section>
-    <section class="recent"><div class="section-title"><h2>Recent transactions</h2><button id="clear" class="link">Reset</button></div><div id="list" aria-live="polite"></div></section>
+
+    <!-- 3. Add expense (inline on this tab only) -->
+    <section class="tab-panel add-panel" data-panel="add">
+      <header class="add-head">
+        <button type="button" class="round light" data-go="dashboard" aria-label="Back">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <h1>Add expense</h1>
+        <span class="add-spacer"></span>
+      </header>
+      <p class="add-meta"><span id="addDateLabel"></span></p>
+      <form id="expenseForm" class="add-form">
+        <label>Amount
+          <input id="expenseAmount" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="₹ 0.00" required>
+        </label>
+        <label>Description
+          <input id="expenseDescription" name="description" type="text" maxlength="200" placeholder="What did you spend on?" required>
+        </label>
+        <label>Category
+          <input id="expenseCategory" name="category" type="text" maxlength="80" placeholder="Food, Travel, Bills…" value="Expense">
+        </label>
+        <label>Payment method
+          <select id="expensePayment" name="payment_method">
+            <option value="UPI">UPI</option>
+            <option value="Cash">Cash</option>
+          </select>
+        </label>
+        <div class="add-summary">
+          <div><span>Payment</span><strong id="addPaymentPreview">UPI</strong></div>
+          <div><span>Ready to save</span><strong id="addAmountPreview">₹0.00</strong></div>
+        </div>
+        <p id="formError" class="form-error" role="alert"></p>
+        <button id="saveExpense" class="save-expense" type="submit">Save expense</button>
+      </form>
+    </section>
+
+    <!-- 4. Graphical representation -->
+    <section class="tab-panel" data-panel="analytics">
+      <header class="page-head">
+        <h1>Statistics</h1>
+        <p class="page-sub" id="analyticsDate"></p>
+      </header>
+      <div class="analytics-card">
+        <p class="card-label dark-label">SPENDING</p>
+        <strong id="analyticsTotal">₹0</strong>
+        <div class="analytics-range" id="analyticsRange" role="tablist">
+          <button type="button" data-range="week">Week</button>
+          <button type="button" class="range-active" data-range="month">Month</button>
+          <button type="button" data-range="year">Year</button>
+        </div>
+        <div id="trend" class="chart-wrap" aria-label="Spending trend"></div>
+      </div>
+      <section class="overview">
+        <h2>Top spending</h2>
+        <div id="analyticsStats" class="analytics-stats"></div>
+      </section>
+    </section>
+
+    <!-- 5. User details -->
+    <section class="tab-panel profile" data-panel="profile">
+      <div class="profile-avatar">H</div>
+      <h2>Hari</h2>
+      <p>Personal expense tracker</p>
+      <div class="profile-card"><span>Total expenses</span><strong id="profileTotal">₹0</strong></div>
+      <div class="profile-card"><span>Transactions recorded</span><strong id="profileCount">0</strong></div>
+      <div class="profile-card"><span>Preferred payment</span><strong id="profilePayment">—</strong></div>
+      <button id="profileRefresh" class="profile-action" type="button">Refresh data</button>
+    </section>
   </main>
-  <nav class="bottom-nav" aria-label="Dashboard navigation"><span class="nav-active">⌂</span><span>▣</span><span class="nav-add">+</span><span>◔</span><span>♙</span></nav>
+
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <button class="nav-item nav-active" data-tab="dashboard" aria-label="Dashboard" title="Dashboard">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 3.2 3.5 10.2V21a1 1 0 0 0 1 1h5.2v-6.2h4.6V22H19.5a1 1 0 0 0 1-1V10.2L12 3.2z"/></svg>
+    </button>
+    <button class="nav-item" data-tab="transactions" aria-label="Transactions" title="Transactions">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="6" width="17" height="13" rx="2.5"/><path d="M3.5 10h17M8 6V4.8a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1V6"/></svg>
+    </button>
+    <button class="nav-add" data-tab="add" aria-label="Add expense" title="Add">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button class="nav-item" data-tab="analytics" aria-label="Statistics" title="Statistics">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 2.07A8 8 0 0 1 19.93 11H13V4.07zM4 12a8 8 0 0 1 8-8v8H4zm9 1h7.93A8 8 0 0 1 5.07 19.4 8.06 8.06 0 0 0 13 13z"/></svg>
+    </button>
+    <button class="nav-item" data-tab="profile" aria-label="Profile" title="Profile">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 19.5c1.6-3.2 4-4.8 7-4.8s5.4 1.6 7 4.8"/></svg>
+    </button>
+  </nav>
+
   <script type="module" src="app.js"></script>
 </body>
 </html>
