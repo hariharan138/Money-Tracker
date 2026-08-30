@@ -1,6 +1,7 @@
 const PRIMARY_API_URL = import.meta.env.PRIMARY_API_URL || '';
 const SECONDARY_API_URL = import.meta.env.SECONDARY_API_URL || '';
-const PRIMARY_TIMEOUT_MS = 8_000;
+// Fail over quickly so a cold primary does not stall the UI for 8s.
+const PRIMARY_TIMEOUT_MS = 3_000;
 
 function apiUrl(baseUrl, path) {
   return new URL(path, `${baseUrl.replace(/\/$/, '')}/`).toString();

@@ -180,24 +180,50 @@ function chartBuckets() {
   return buckets;
 }
 
+/** Short rupee label that fits the chart badges. */
+function compactINR(value) {
+  const amount = Number(value) || 0;
+  if (amount >= 100000) return `₹${(amount / 100000).toFixed(amount % 100000 === 0 ? 0 : 1)}L`;
+  if (amount >= 1000) return `₹${(amount / 1000).toFixed(amount % 1000 === 0 ? 0 : 1)}k`;
+  return `₹${Math.round(amount)}`;
+}
+
 function renderChart() {
   const buckets = chartBuckets();
+  if (!buckets.length) {
+    $('#trend').innerHTML = '<div class="empty">No spending data yet.</div>';
+    return;
+  }
+
   const max = Math.max(...buckets.map(b => b.total), 1);
   const w = 320;
-  const h = 180;
-  const padX = 12;
-  const padY = 24;
-  const chartH = h - padY * 2;
+  const h = 200;
+  const padX = 18;
+  const padTop = 36;
+  const padBottom = 28;
+  const chartH = h - padTop - padBottom;
   const chartW = w - padX * 2;
   const points = buckets.map((bucket, index) => {
     const x = padX + (buckets.length === 1 ? chartW / 2 : (index / (buckets.length - 1)) * chartW);
-    const y = padY + chartH - (bucket.total / max) * chartH;
+    const y = padTop + chartH - (bucket.total / max) * chartH;
     return { ...bucket, x, y };
   });
 
   const line = points.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const area = `${line} L${points.at(-1).x.toFixed(1)},${(h - padY).toFixed(1)} L${points[0].x.toFixed(1)},${(h - padY).toFixed(1)} Z`;
+  const area = `${line} L${points.at(-1).x.toFixed(1)},${(h - padBottom).toFixed(1)} L${points[0].x.toFixed(1)},${(h - padBottom).toFixed(1)} Z`;
   const peak = points.reduce((best, p) => (p.total >= best.total ? p : best), points[0]);
+  const peakLabel = compactINR(peak.total);
+  const peakWidth = Math.max(52, peakLabel.length * 7.2 + 16);
+  const peakX = Math.min(Math.max(peak.x - peakWidth / 2, 4), w - peakWidth - 4);
+  const peakY = Math.max(peak.y - 30, 4);
+
+  const valueLabels = points
+    .filter(p => p.total > 0 && p !== peak)
+    .map(p => {
+      const label = compactINR(p.total);
+      return `<text class="chart-value" x="${p.x.toFixed(1)}" y="${Math.max(p.y - 10, 12).toFixed(1)}" text-anchor="middle">${label}</text>`;
+    })
+    .join('');
 
   $('#trend').innerHTML = `
     <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Spending chart">
@@ -209,12 +235,13 @@ function renderChart() {
       </defs>
       <path d="${area}" fill="url(#chartFill)"/>
       <path d="${line}" fill="none" stroke="#151922" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-      <line x1="${peak.x}" y1="${padY}" x2="${peak.x}" y2="${h - padY}" stroke="#c9ccd1" stroke-width="1.2" stroke-dasharray="4 4"/>
+      <line x1="${peak.x}" y1="${padTop}" x2="${peak.x}" y2="${h - padBottom}" stroke="#c9ccd1" stroke-width="1.2" stroke-dasharray="4 4"/>
       <circle cx="${peak.x}" cy="${peak.y}" r="5" fill="#151922"/>
       <circle cx="${peak.x}" cy="${peak.y}" r="2.5" fill="#fff"/>
-      <rect x="${Math.min(Math.max(peak.x - 36, 4), w - 76)}" y="${Math.max(peak.y - 28, 4)}" width="72" height="22" rx="8" fill="#151922"/>
-      <text class="chart-tooltip" x="${Math.min(Math.max(peak.x - 36, 4) + 36, w - 40)}" y="${Math.max(peak.y - 28, 4) + 15}" text-anchor="middle" fill="#fff">${INR.format(peak.total)}</text>
-      ${points.map(p => `<text x="${p.x}" y="${h - 4}" text-anchor="middle" fill="#a0a3a9" font-size="9" font-weight="600">${escapeHtml(p.label)}</text>`).join('')}
+      ${valueLabels}
+      <rect x="${peakX}" y="${peakY}" width="${peakWidth}" height="22" rx="8" fill="#151922"/>
+      <text class="chart-tooltip" x="${peakX + peakWidth / 2}" y="${peakY + 15}" text-anchor="middle">${peakLabel}</text>
+      ${points.map(p => `<text x="${p.x}" y="${h - 6}" text-anchor="middle" fill="#a0a3a9" font-size="9" font-weight="600">${escapeHtml(p.label)}</text>`).join('')}
     </svg>`;
 }
 
@@ -356,7 +383,7 @@ function updateAddPreview() {
   $('#addPaymentPreview').textContent = $('#expensePayment')?.value || 'UPI';
 }
 
-async function load() {
+async function load({ quiet = false } = {}) {
   if (!hasApiConfiguration()) {
     $('#status').textContent = 'Set PRIMARY_API_URL and SECONDARY_API_URL in frontend/.env.local';
     syncProfileKeyUi('Backend URLs are not configured', 'err');
@@ -369,7 +396,7 @@ async function load() {
     syncProfileKeyUi('Paste your API key, then tap Save & load data');
     return false;
   }
-  $('#status').textContent = 'Loading expenses…';
+  if (!quiet) $('#status').textContent = 'Loading expenses…';
   try {
     const response = await apiFetch(`/api/expenses?key=${encodeURIComponent(KEY)}&limit=1000`, { cache: 'no-store' });
     if (response.status === 401) throw new Error('Invalid API key');
@@ -384,7 +411,7 @@ async function load() {
     const message = error.message === 'Failed to fetch'
       ? 'Could not reach API — check its URL and CORS_ORIGINS'
       : error.message;
-    $('#status').textContent = message;
+    if (!quiet) $('#status').textContent = message;
     syncProfileKeyUi(message, 'err');
     return false;
   }
@@ -438,6 +465,11 @@ async function saveExpense(event) {
     error.textContent = 'Enter an amount and description.';
     return;
   }
+  if (!KEY) {
+    error.textContent = 'Save your API key in Profile first.';
+    showTab('profile');
+    return;
+  }
 
   const saveButton = $('#saveExpense');
   saveButton.disabled = true;
@@ -451,11 +483,28 @@ async function saveExpense(event) {
       body: JSON.stringify({ amount, category, description, payment_method: paymentMethod }),
     });
     if (!response.ok) throw new Error('Could not save this expense.');
+    const created = await response.json().catch(() => ({}));
+    const nowIso = new Date().toISOString();
+    // Update UI immediately — do not wait for a full list refetch (cold API can stall).
+    expenses = [{
+      id: created.expense_id || `local-${Date.now()}`,
+      amount,
+      category,
+      description,
+      payment_method: paymentMethod,
+      notes: null,
+      date: nowIso,
+      created_at: nowIso,
+      user: connectedUserName() || undefined,
+    }, ...expenses];
     $('#expenseForm').reset();
     $('#expenseCategory').value = 'Expense';
     updateAddPreview();
-    await load();
+    render();
     showTab('transactions');
+    $('#status').textContent = 'Expense saved';
+    // Soft sync in the background; ignore failures so the UI stays snappy.
+    load({ quiet: true }).catch(() => {});
   } catch (err) {
     error.textContent = err.message || 'Could not save this expense.';
   } finally {

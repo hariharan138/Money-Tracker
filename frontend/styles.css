@@ -531,7 +531,13 @@ h1 {
 .chart-tooltip {
   font-size: 11px;
   font-weight: 700;
-  fill: var(--ink);
+  fill: #fff;
+}
+
+.chart-value {
+  font-size: 9px;
+  font-weight: 700;
+  fill: #151922;
 }
 
 .analytics-stats {
