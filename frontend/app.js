@@ -11,10 +11,17 @@ if ('serviceWorker' in navigator) {
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
+const API_KEY_STORAGE = 'expenses-api-key';
 const params = new URLSearchParams(location.search);
-const keyFromUrl = params.get('key') || '';
-if (keyFromUrl) localStorage.setItem('expenses-api-key', keyFromUrl);
-const KEY = keyFromUrl || localStorage.getItem('expenses-api-key') || '';
+const keyFromUrl = (params.get('key') || '').trim();
+if (keyFromUrl) {
+  localStorage.setItem(API_KEY_STORAGE, keyFromUrl);
+  // Keep the shareable link working once, then drop the secret from the address bar.
+  params.delete('key');
+  const clean = `${location.pathname}${params.toString() ? `?${params}` : ''}${location.hash}`;
+  history.replaceState(null, '', clean);
+}
+let KEY = keyFromUrl || localStorage.getItem(API_KEY_STORAGE) || '';
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
 const icons = {
   food: '🍜', groceries: '🛒', grocery: '🛒', travel: '✈️', cab: '🚕', fuel: '⛽',
@@ -200,6 +207,50 @@ function preferredPayment() {
   return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
 }
 
+function connectedUserName() {
+  const named = expenses.find(item => (item.user || '').trim())?.user?.trim();
+  return named || '';
+}
+
+function maskKey(key) {
+  if (!key) return '';
+  if (key.length <= 8) return '••••••••';
+  return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
+
+function syncProfileKeyUi(message = '', kind = '') {
+  const input = $('#apiKeyInput');
+  const status = $('#apiKeyStatus');
+  if (input && document.activeElement !== input) {
+    input.value = KEY;
+    input.placeholder = KEY ? 'API key saved on this device' : 'Paste your API key';
+  }
+  status.textContent = message || (KEY ? `Using ${maskKey(KEY)}` : 'No API key saved yet');
+  status.className = `profile-key-status${kind ? ` ${kind}` : ''}`;
+}
+
+function updateProfileIdentity() {
+  const name = connectedUserName();
+  const avatar = $('#profileAvatar');
+  const title = $('#profileName');
+  const subtitle = $('#profileSubtitle');
+  if (!KEY) {
+    avatar.textContent = '?';
+    title.textContent = 'Not connected';
+    subtitle.textContent = 'Paste your API key below to load expenses';
+    return;
+  }
+  if (name) {
+    avatar.textContent = name.slice(0, 1).toUpperCase();
+    title.textContent = name;
+    subtitle.textContent = 'Personal expense tracker';
+  } else {
+    avatar.textContent = '✓';
+    title.textContent = 'Connected';
+    subtitle.textContent = 'API key saved on this device';
+  }
+}
+
 function chartWindowTotal() {
   const now = new Date();
   if (state.chartRange === 'week') {
@@ -261,6 +312,8 @@ function render() {
   $('#profileCount').textContent = String(expenses.length);
   $('#profilePayment').textContent = preferredPayment();
   $('#addDateLabel').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  updateProfileIdentity();
+  syncProfileKeyUi();
 
   renderChart();
   updateAddPreview();
@@ -286,11 +339,15 @@ function updateAddPreview() {
 async function load() {
   if (!hasApiConfiguration()) {
     $('#status').textContent = 'Set PRIMARY_API_URL and SECONDARY_API_URL in frontend/.env.local';
-    return;
+    syncProfileKeyUi('Backend URLs are not configured', 'err');
+    return false;
   }
   if (!KEY) {
-    $('#status').textContent = 'Add your API key to this page URL';
-    return;
+    $('#status').textContent = 'Open Profile and paste your API key';
+    expenses = [];
+    render();
+    syncProfileKeyUi('Paste your API key, then tap Save & load data');
+    return false;
   }
   $('#status').textContent = 'Loading expenses…';
   try {
@@ -300,12 +357,42 @@ async function load() {
     expenses = (await response.json()).expenses || [];
     render();
     $('#status').textContent = 'Updated just now';
+    syncProfileKeyUi(`Connected · ${maskKey(KEY)}`, 'ok');
+    return true;
   } catch (error) {
     console.error(error);
-    $('#status').textContent = error.message === 'Failed to fetch'
+    const message = error.message === 'Failed to fetch'
       ? 'Could not reach API — check its URL and CORS_ORIGINS'
       : error.message;
+    $('#status').textContent = message;
+    syncProfileKeyUi(message, 'err');
+    return false;
   }
+}
+
+async function saveApiKey() {
+  const next = ($('#apiKeyInput').value || '').trim();
+  const status = $('#apiKeyStatus');
+  if (!next) {
+    status.textContent = 'Paste an API key first';
+    status.className = 'profile-key-status err';
+    return;
+  }
+  KEY = next;
+  localStorage.setItem(API_KEY_STORAGE, KEY);
+  status.textContent = 'Saved. Loading…';
+  status.className = 'profile-key-status';
+  if (await load()) showTab('dashboard');
+}
+
+function clearApiKey() {
+  KEY = '';
+  expenses = [];
+  localStorage.removeItem(API_KEY_STORAGE);
+  $('#apiKeyInput').value = '';
+  render();
+  $('#status').textContent = 'Open Profile and paste your API key';
+  syncProfileKeyUi('API key cleared from this device');
 }
 
 async function remove(id) {
@@ -359,6 +446,14 @@ async function saveExpense(event) {
 
 $('#refresh').onclick = load;
 $('#profileRefresh').onclick = load;
+$('#saveApiKey').onclick = saveApiKey;
+$('#clearApiKey').onclick = clearApiKey;
+$('#apiKeyInput').addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    saveApiKey();
+  }
+});
 $('#expenseForm').onsubmit = saveExpense;
 $('#expenseAmount').oninput = updateAddPreview;
 $('#expensePayment').onchange = updateAddPreview;
@@ -409,4 +504,6 @@ $('#list').onclick = event => {
 };
 
 render();
+syncProfileKeyUi();
+if (!KEY) showTab('profile');
 load();

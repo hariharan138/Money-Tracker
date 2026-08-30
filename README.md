@@ -38,10 +38,13 @@ or any static host. It does not need a backend process.
 3. Set `CORS_ORIGINS` on **both** API deployments to your frontend origin, e.g.
    `https://expenses.example.com`. Use commas for multiple origins.
 4. Run `cd frontend && npm install && npm run build`, then deploy `frontend/dist`.
-5. Open the frontend at `https://expenses.example.com/?key=YOUR_API_KEY`.
+5. Open the frontend at `https://expenses.example.com` (no key in the URL).
+6. Go to **Profile**, paste your API key (`SHORTCUT_API_KEY` or an
+   `EXPENSE_USERS` key), and tap **Save & load data**. The key is stored only
+   in this browser’s localStorage.
 
-The API key stays in the browser URL so the static site has no secret embedded
-in its deployed files. Treat that URL as private.
+You can still open `/?key=YOUR_API_KEY` once — the app saves it and strips the
+key from the address bar. Treat that one-time URL as private.
 
 ## API
 

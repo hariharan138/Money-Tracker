@@ -155,13 +155,25 @@
 
     <!-- 5. User details -->
     <section class="tab-panel profile" data-panel="profile">
-      <div class="profile-avatar">H</div>
-      <h2>Hari</h2>
-      <p>Personal expense tracker</p>
+      <div class="profile-avatar" id="profileAvatar">?</div>
+      <h2 id="profileName">Not connected</h2>
+      <p id="profileSubtitle">Open Profile and paste your API key to load expenses</p>
       <div class="profile-card"><span>Total expenses</span><strong id="profileTotal">₹0</strong></div>
       <div class="profile-card"><span>Transactions recorded</span><strong id="profileCount">0</strong></div>
       <div class="profile-card"><span>Preferred payment</span><strong id="profilePayment">—</strong></div>
-      <button id="profileRefresh" class="profile-action" type="button">Refresh data</button>
+
+      <div class="profile-key">
+        <label for="apiKeyInput">API key</label>
+        <p class="profile-key-hint">Get this from your server <code>.env</code> (<code>SHORTCUT_API_KEY</code> or an <code>EXPENSE_USERS</code> key). Saved only on this device.</p>
+        <input id="apiKeyInput" class="profile-key-input" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your API key">
+        <p id="apiKeyStatus" class="profile-key-status" aria-live="polite"></p>
+        <div class="profile-key-actions">
+          <button id="saveApiKey" class="profile-action" type="button">Save &amp; load data</button>
+          <button id="clearApiKey" class="profile-action profile-action-secondary" type="button">Clear key</button>
+        </div>
+      </div>
+
+      <button id="profileRefresh" class="profile-action profile-action-secondary" type="button">Refresh data</button>
     </section>
   </main>
 

@@ -751,6 +751,81 @@ body.on-add .app {
   color: #fff;
 }
 
+.profile-key {
+  margin-top: 22px;
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--card);
+  text-align: left;
+  box-shadow: var(--shadow);
+}
+
+.profile-key label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.profile-key-hint {
+  margin: 8px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.profile-key-hint code {
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(20, 24, 30, 0.06);
+}
+
+.profile-key-input {
+  width: 100%;
+  border: 1px solid var(--line, #e6e8eb);
+  border-radius: 14px;
+  padding: 13px 14px;
+  background: #f7f8f9;
+  color: var(--text);
+  outline: none;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.profile-key-input:focus {
+  border-color: #202224;
+  background: #fff;
+}
+
+.profile-key-status {
+  min-height: 18px;
+  margin: 10px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.profile-key-status.ok { color: #2f9d63; }
+.profile-key-status.err { color: #d64545; }
+
+.profile-key-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.profile-key-actions .profile-action {
+  margin-top: 0;
+}
+
+.profile-action-secondary {
+  background: #e9ecee;
+  color: #2a2f34;
+}
+
 @media (min-width: 700px) {
   body {
     padding: 28px 0;
