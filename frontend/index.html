@@ -24,7 +24,7 @@
       <header class="topbar">
         <div>
           <p class="eyebrow" id="greeting">Good morning!</p>
-          <h1>Hari</h1>
+          <h1 id="dashboardName">Hari</h1>
           <p id="status" class="sync-status">Your spending overview</p>
         </div>
         <button id="reloadBtn" class="reload-btn" type="button" title="Reload" aria-label="Reload data">
@@ -44,6 +44,16 @@
           <span>•••• &nbsp; •••• &nbsp; •••• &nbsp; 2026</span>
           <span class="mark"><i></i><i></i></span>
         </div>
+      </section>
+
+      <section class="budget" id="budgetSection" hidden>
+        <div class="budget-head">
+          <h2>Monthly limit</h2>
+          <button class="link" id="editLimit" type="button">Set limit</button>
+        </div>
+        <div id="budgetAlert" class="budget-alert" hidden></div>
+        <div id="budgetBars" class="budget-bars"></div>
+        <p id="budgetSummary" class="budget-summary"></p>
       </section>
 
       <section class="overview">
@@ -178,6 +188,24 @@
       <button id="profileRefresh" class="profile-action profile-action-secondary" type="button">Refresh data</button>
     </section>
   </main>
+
+  <!-- Limit setter modal -->
+  <div id="limitModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-limit></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="limitModalTitle">
+      <h3 id="limitModalTitle">Set monthly limit</h3>
+      <p class="modal-hint">Your monthly budget. Daily &amp; weekly targets are worked out automatically.</p>
+      <div class="limit-periods" id="limitPreview"></div>
+      <label class="limit-label">Monthly limit (₹)
+        <input id="limitInput" class="limit-input" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 20000">
+      </label>
+      <div class="limit-actions">
+        <button id="saveLimit" class="profile-action" type="button">Save limit</button>
+        <button id="removeLimit" class="profile-action profile-action-secondary" type="button">Remove</button>
+      </div>
+      <button id="closeLimit" class="limit-close" type="button" aria-label="Close">✕</button>
+    </div>
+  </div>
 
   <nav class="bottom-nav" aria-label="Main navigation">
     <button class="nav-item nav-active" data-tab="dashboard" aria-label="Dashboard" title="Dashboard">

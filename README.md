@@ -107,6 +107,19 @@ Auth: `X-API-Key` header **or** `?key=` query param (for the browser).
 Same auth. **200** `{ "success": true, "message": "Expense deleted" }`,
 **400** bad id, **404** unknown id.
 
+### `GET /api/limits` / `PUT /api/limits`
+
+Per-user monthly spending limit (used by the dashboard budget tracker). Same
+auth as expenses.
+
+- `GET /api/limits` → **200** `{ "success": true, "limit": { "user": "Hari", "monthly_limit": 20000, "updated_at": "…" } }`
+- `PUT /api/limits` with `{ "monthly_limit": 20000 }` sets it;
+  `{ "monthly_limit": null }` removes it. **400** for a negative value.
+
+The dashboard splits that amount into approximate daily/weekly targets and
+warns when you get close to or exceed the monthly budget.
+
+
 ### `GET /?key=<SHORTCUT_API_KEY>`
 
 Dashboard for your phone (add to Home Screen — it uses `/icon-180.png` as its

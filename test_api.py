@@ -8,12 +8,13 @@ os.environ.setdefault("SHORTCUT_API_KEY", "test-key")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.config import settings  # noqa: E402
-from app.database import get_collection  # noqa: E402
+from app.database import get_collection, get_limits_collection  # noqa: E402
 from app.main import app  # noqa: E402
 
 inserted: list[dict] = []
 delete_finds_row = False
 last_query: dict = {}
+limits_store: list[dict] = []
 
 
 class FakeCollection:
@@ -59,7 +60,24 @@ class FakeCollection:
         return type("R", (), {"deleted_count": 1 if delete_finds_row else 0})()
 
 
+class FakeLimitsCollection:
+    async def find_one(self, query):
+        for doc in limits_store:
+            if doc["user"] == query["user"]:
+                return doc
+        return None
+
+    async def replace_one(self, filter_, doc, upsert=False):
+        for i, existing in enumerate(limits_store):
+            if existing["user"] == filter_["user"]:
+                limits_store[i] = doc
+                return type("R", (), {"upserted_id": None})()
+        limits_store.append(doc)
+        return type("R", (), {"upserted_id": "x"})()
+
+
 app.dependency_overrides[get_collection] = lambda: FakeCollection()
+app.dependency_overrides[get_limits_collection] = lambda: FakeLimitsCollection()
 client = TestClient(app)  # lifespan is skipped: get_collection is overridden
 HEAD = {"X-API-Key": "test-key"}
 
@@ -253,3 +271,28 @@ def test_delete_is_scoped_to_owner():
     finally:
         FakeCollection.delete_one = orig
         settings.expense_users = ""
+
+
+def test_limits_get_put_remove():
+    limits_store.clear()
+    # not set yet -> null limit
+    r = client.get("/api/limits", headers=HEAD)
+    assert r.status_code == 200 and r.json()["limit"]["monthly_limit"] is None
+
+    # set a limit
+    r = client.put("/api/limits", headers=HEAD, json={"monthly_limit": 20000})
+    assert r.status_code == 200 and r.json()["limit"]["monthly_limit"] == 20000
+    r = client.get("/api/limits", headers=HEAD)
+    assert r.json()["limit"]["monthly_limit"] == 20000
+
+    # stored under the caller's user name
+    assert limits_store and limits_store[0]["user"] == settings.default_user
+
+    # remove it
+    r = client.put("/api/limits", headers=HEAD, json={"monthly_limit": None})
+    assert r.status_code == 200 and r.json()["limit"]["monthly_limit"] is None
+
+    # rejection: negative limit and missing auth
+    assert client.put("/api/limits", headers=HEAD, json={"monthly_limit": -5}).status_code == 400
+    assert client.get("/api/limits").status_code == 401
+

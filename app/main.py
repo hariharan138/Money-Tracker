@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .database import lifespan
 from .routes.expenses import router
+from .routes.limits import router as limits_router
 from .routes.view import router as view_router
 from .config import cors_origins, settings
 
@@ -39,11 +40,12 @@ if _cors_origins:
         CORSMiddleware,
         allow_origins=_cors_origins,
         allow_credentials=False,
-        allow_methods=["GET", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "DELETE", "PUT", "OPTIONS"],
         allow_headers=["Content-Type", "X-API-Key"],
     )
 
 app.include_router(router)
+app.include_router(limits_router)
 app.include_router(view_router)
 
 

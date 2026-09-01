@@ -54,6 +54,7 @@ const icons = {
 };
 
 let expenses = [];
+let monthlyLimit = null;
 const state = { preset: 'all', payment: 'all', q: '', sort: 'newest', chartRange: 'month' };
 
 function dateOf(value) {
@@ -273,6 +274,196 @@ function connectedUserName() {
   return named || '';
 }
 
+function daysInCurrentMonth() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+}
+
+function spendInSpan(from, to) {
+  return sum(expenses.filter(item => {
+    const d = dateOf(item.date);
+    return !Number.isNaN(d.getTime()) && d >= from && d <= to;
+  }));
+}
+
+/** Spend so far this calendar month (local). */
+function monthSpend() {
+  const now = new Date();
+  return spendInSpan(new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59));
+}
+
+/** Spend so far today (local). */
+function todaySpend() {
+  const now = new Date();
+  return spendInSpan(new Date(now.getFullYear(), now.getMonth(), now.getDate()), now);
+}
+
+/** Spend so far this calendar week starting Monday. */
+function weekSpend() {
+  const now = new Date();
+  const day = (now.getDay() + 6) % 7;
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day);
+  return spendInSpan(start, now);
+}
+
+function weekStartKey() {
+  const now = new Date();
+  const day = (now.getDay() + 6) % 7;
+  return dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - day));
+}
+
+function budgetAlert(monthSpent) {
+  if (monthlyLimit == null) return null;
+  const ratio = monthSpent / monthlyLimit;
+  if (ratio >= 1) {
+    return { kind: 'danger', text: `Monthly limit hit — you've spent ${INR.format(monthSpent)} of ${INR.format(monthlyLimit)}.` };
+  }
+  if (ratio >= 0.8) {
+    return { kind: 'warn', text: `Careful — you've used ${Math.round(ratio * 100)}% of your monthly limit.` };
+  }
+  return null;
+}
+
+function budgetBar(label, spent, target, color) {
+  const pct = target > 0 ? Math.min(100, (spent / target) * 100) : 0;
+  const over = target > 0 && spent > target;
+  return `
+    <div class="budget-bar">
+      <div class="budget-bar-top">
+        <span>${label}</span>
+        <span class="budget-bar-val ${over ? 'over' : ''}">${INR.format(spent)} <small>/ ${INR.format(target)}</small></span>
+      </div>
+      <div class="budget-track ${over ? 'over' : ''}"><i style="width:${pct}%;${color ? `background:${color}` : ''}"></i></div>
+      <div class="budget-bar-rem">${target > 0 ? (spent > target ? `${INR.format(spent - target)} over` : `${INR.format(target - spent)} left`) : ''}</div>
+    </div>`;
+}
+
+function renderBudget() {
+  const section = $('#budgetSection');
+  if (!section) return;
+  if (monthlyLimit == null) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  const now = new Date();
+  const days = daysInCurrentMonth();
+  const dayOfMonth = now.getDate();
+  const dayTarget = monthlyLimit / days;
+  const weekStart = weekStartKey();
+  const weekDayCount = Math.max(1, Math.min(7, Math.floor((now - new Date(weekStart + 'T00:00:00')) / 864e5) + 1));
+  const weekTarget = (monthlyLimit / 4.33) * (weekDayCount / 7);
+
+  const spent = { month: monthSpend(), today: todaySpend(), week: weekSpend() };
+
+  const alert = budgetAlert(spent.month);
+  const alertEl = $('#budgetAlert');
+  if (alert) {
+    alertEl.hidden = false;
+    alertEl.textContent = alert.text;
+    alertEl.className = `budget-alert ${alert.kind}`;
+  } else {
+    alertEl.hidden = true;
+    alertEl.className = 'budget-alert';
+  }
+
+  $('#budgetBars').innerHTML =
+    budgetBar('This month', spent.month, monthlyLimit, 'var(--orange)') +
+    budgetBar('This week', spent.week, weekTarget) +
+    budgetBar('Today', spent.today, dayTarget, 'var(--green)');
+
+  $('#budgetSummary').textContent = `${INR.format(monthlyLimit)} limit · ${INR.format(Math.max(0, monthlyLimit - spent.month))} remaining this month`;
+}
+
+function openLimitModal() {
+  const modal = $('#limitModal');
+  const input = $('#limitInput');
+  input.value = monthlyLimit == null ? '' : String(monthlyLimit);
+  updateLimitPreview();
+  modal.hidden = false;
+  setTimeout(() => input.focus(), 120);
+}
+
+function closeLimitModal() {
+  $('#limitModal').hidden = true;
+}
+
+function updateLimitPreview() {
+  const value = Number($('#limitInput')?.value || 0);
+  const el = $('#limitPreview');
+  if (!el) return;
+  if (!value || value <= 0) {
+    el.innerHTML = '<span class="limit-period-muted">Enter an amount to see daily &amp; weekly targets.</span>';
+    return;
+  }
+  const days = daysInCurrentMonth();
+  el.innerHTML = `
+    <div class="limit-period"><span>Monthly</span><strong>${INR.format(value)}</strong></div>
+    <div class="limit-period"><span>Weekly (avg)</span><strong>${INR.format(value / 4.33)}</strong></div>
+    <div class="limit-period"><span>Daily (avg)</span><strong>${INR.format(value / days)}</strong></div>`;
+}
+
+async function saveLimit() {
+  const value = Number($('#limitInput')?.value || 0);
+  if (!value || value <= 0) {
+    $('#limitInput').focus();
+    return;
+  }
+  if (!KEY) {
+    showTab('profile');
+    return;
+  }
+  try {
+    const response = await apiFetch(`/api/limits?key=${encodeURIComponent(KEY)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monthly_limit: value }),
+    });
+    if (!response.ok) throw new Error('Could not save limit');
+    monthlyLimit = value;
+    closeLimitModal();
+    render();
+    $('#status').textContent = 'Monthly limit saved';
+  } catch (error) {
+    console.error(error);
+    alert('Could not save your limit. Try again.');
+  }
+}
+
+async function removeLimitLocal() {
+  if (!monthlyLimit) return;
+  if (!KEY) return;
+  try {
+    const response = await apiFetch(`/api/limits?key=${encodeURIComponent(KEY)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monthly_limit: null }),
+    });
+    if (!response.ok) throw new Error('Could not remove limit');
+    monthlyLimit = null;
+    closeLimitModal();
+    render();
+    $('#status').textContent = 'Monthly limit removed';
+  } catch (error) {
+    console.error(error);
+    alert('Could not remove your limit. Try again.');
+  }
+}
+
+async function loadLimit() {
+  if (!KEY) return;
+  try {
+    const response = await apiFetch(`/api/limits?key=${encodeURIComponent(KEY)}`, { cache: 'no-store' });
+    if (!response.ok) return;
+    const data = (await response.json()).limit;
+    monthlyLimit = data?.monthly_limit ?? null;
+    render();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 function maskKey(key) {
   if (!key) return '';
   if (key.length <= 8) return '••••••••';
@@ -295,20 +486,24 @@ function updateProfileIdentity() {
   const avatar = $('#profileAvatar');
   const title = $('#profileName');
   const subtitle = $('#profileSubtitle');
+  const dashboardName = $('#dashboardName');
   if (!KEY) {
     avatar.textContent = '?';
     title.textContent = 'Not connected';
     subtitle.textContent = 'Paste your API key below to load expenses';
+    if (dashboardName) dashboardName.textContent = '';
     return;
   }
   if (name) {
     avatar.textContent = name.slice(0, 1).toUpperCase();
     title.textContent = name;
     subtitle.textContent = 'Personal expense tracker';
+    if (dashboardName) dashboardName.textContent = name;
   } else {
     avatar.textContent = '✓';
     title.textContent = 'Connected';
     subtitle.textContent = 'API key saved on this device';
+    if (dashboardName) dashboardName.textContent = 'Expenses';
   }
 }
 
@@ -379,6 +574,7 @@ function render() {
 
   renderChart();
   updateAddPreview();
+  renderBudget();
 }
 
 function showTab(name) {
@@ -424,6 +620,7 @@ async function load({ quiet = false } = {}) {
     render();
     $('#status').textContent = 'Updated just now';
     syncProfileKeyUi(`Connected · ${maskKey(KEY)}`, 'ok');
+    loadLimit();
     return true;
   } catch (error) {
     console.error(error);
@@ -606,6 +803,20 @@ $('#list').onclick = event => {
   const button = event.target.closest('[data-delete]');
   if (button) remove(button.dataset.delete);
 };
+
+$('.more').onclick = openLimitModal;
+$('#editLimit').onclick = openLimitModal;
+$('#saveLimit').onclick = saveLimit;
+$('#removeLimit').onclick = removeLimitLocal;
+$('#closeLimit').onclick = closeLimitModal;
+$('[data-close-limit]').onclick = closeLimitModal;
+$('#limitInput').oninput = updateLimitPreview;
+$('#limitInput').addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    saveLimit();
+  }
+});
 
 render();
 syncProfileKeyUi();

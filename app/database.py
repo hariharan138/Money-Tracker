@@ -37,3 +37,9 @@ def get_collection() -> AsyncCollection:
     """FastAPI dependency — overridable in tests."""
     assert _client is not None, "lifespan did not run"
     return _client[settings.mongodb_db][settings.mongodb_collection]
+
+
+def get_limits_collection() -> AsyncCollection:
+    """FastAPI dependency for per-user spending limits."""
+    assert _client is not None, "lifespan did not run"
+    return _client[settings.mongodb_db]["spending_limits"]
