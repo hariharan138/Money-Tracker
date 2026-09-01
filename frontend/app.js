@@ -875,8 +875,72 @@ $('#expenseAmount').oninput = updateAddPreview;
 $('#expensePayment').onchange = updateAddPreview;
 
 $$('[data-tab]').forEach(button => {
-  button.onclick = () => showTab(button.dataset.tab);
+  button.onclick = () => {
+    if (suppressTabClick) return;
+    showTab(button.dataset.tab);
+  };
 });
+
+/* —— Liquid-glass navbar: springy horizontal swipe / drag —— */
+const NAV_TABS = ['dashboard', 'transactions', 'add', 'analytics', 'profile'];
+const nav = $('.bottom-nav');
+const SWIPE_THRESHOLD = 60;
+let dragState = null;
+let suppressTabClick = false;
+
+function activeTabName() {
+  const active = $$('[data-tab]').find(button => button.classList.contains('nav-active'));
+  return active ? active.dataset.tab : 'dashboard';
+}
+
+nav.addEventListener('pointerdown', event => {
+  if (event.button != null && event.button !== 0) return;
+  dragState = {
+    id: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    dx: 0,
+    dragging: false,
+  };
+  try { nav.setPointerCapture(event.pointerId); } catch (_) { /* not supported */ }
+});
+
+nav.addEventListener('pointermove', event => {
+  if (!dragState || event.pointerId !== dragState.id) return;
+  const dx = event.clientX - dragState.startX;
+  const dy = event.clientY - dragState.startY;
+  // Vertical intent → let the page scroll; don't hijack it.
+  if (!dragState.dragging && Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+    dragState = null;
+    return;
+  }
+  dragState.dx = dx;
+  if (Math.abs(dx) > 4) dragState.dragging = true;
+  // Rubber-band at the edges so it stays liquid instead of flying away.
+  const max = Math.min(nav.offsetWidth * 0.35, 110);
+  const tx = dx > max ? max + (dx - max) * 0.3 : (dx < -max ? -max - (dx + max) * 0.3 : dx);
+  nav.style.transition = 'none';
+  nav.style.transform = `translateX(calc(-50% + ${tx}px)) rotate(${tx * 0.02}deg)`;
+});
+
+function endNavDrag(event) {
+  if (!dragState || event.pointerId !== dragState.id) return;
+  const { dx, dragging } = dragState;
+  dragState = null;
+  // Spring back to centre; the transition does the rest.
+  nav.style.transition = '';
+  nav.style.transform = 'translateX(-50%)';
+  if (!dragging) return;
+  suppressTabClick = true;
+  const index = NAV_TABS.indexOf(activeTabName());
+  const delta = dx > SWIPE_THRESHOLD ? 1 : (dx < -SWIPE_THRESHOLD ? -1 : 0);
+  const next = index + delta;
+  if (delta !== 0 && next >= 0 && next < NAV_TABS.length) showTab(NAV_TABS[next]);
+  setTimeout(() => { suppressTabClick = false; }, 50);
+}
+
+nav.addEventListener('pointerup', endNavDrag);
+nav.addEventListener('pointercancel', endNavDrag);
 
 $$('[data-go]').forEach(button => {
   button.onclick = () => showTab(button.dataset.go);
