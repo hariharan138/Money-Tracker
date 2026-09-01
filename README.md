@@ -119,6 +119,18 @@ auth as expenses.
 The dashboard splits that amount into approximate daily/weekly targets and
 warns when you get close to or exceed the monthly budget.
 
+### `GET /api/profile` / `PUT /api/profile`
+
+Per-user profile picture, stored in the database as an image data URL. Same
+auth as expenses.
+
+- `GET /api/profile` → `{ "success": true, "profile": { "user": "Hari", "avatar": "data:image/…", "updated_at": "…" } }`
+- `PUT /api/profile` with `{ "avatar": "data:image/jpeg;base64,…" }` sets the
+  photo; `{ "avatar": null }` removes it. **400** if the avatar isn't an
+  image data URL.
+
+The dashboard shows the photo next to your name and on the Profile tab.
+
 
 ### `GET /?key=<SHORTCUT_API_KEY>`
 

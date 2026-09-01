@@ -43,3 +43,9 @@ def get_limits_collection() -> AsyncCollection:
     """FastAPI dependency for per-user spending limits."""
     assert _client is not None, "lifespan did not run"
     return _client[settings.mongodb_db]["spending_limits"]
+
+
+def get_profiles_collection() -> AsyncCollection:
+    """FastAPI dependency for per-user profile pictures."""
+    assert _client is not None, "lifespan did not run"
+    return _client[settings.mongodb_db]["profiles"]

@@ -8,13 +8,14 @@ os.environ.setdefault("SHORTCUT_API_KEY", "test-key")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.config import settings  # noqa: E402
-from app.database import get_collection, get_limits_collection  # noqa: E402
+from app.database import get_collection, get_limits_collection, get_profiles_collection  # noqa: E402
 from app.main import app  # noqa: E402
 
 inserted: list[dict] = []
 delete_finds_row = False
 last_query: dict = {}
 limits_store: list[dict] = []
+profiles_store: list[dict] = []
 
 
 class FakeCollection:
@@ -76,8 +77,25 @@ class FakeLimitsCollection:
         return type("R", (), {"upserted_id": "x"})()
 
 
+class FakeProfilesCollection:
+    async def find_one(self, query):
+        for doc in profiles_store:
+            if doc["user"] == query["user"]:
+                return doc
+        return None
+
+    async def replace_one(self, filter_, doc, upsert=False):
+        for i, existing in enumerate(profiles_store):
+            if existing["user"] == filter_["user"]:
+                profiles_store[i] = doc
+                return type("R", (), {"upserted_id": None})()
+        profiles_store.append(doc)
+        return type("R", (), {"upserted_id": "x"})()
+
+
 app.dependency_overrides[get_collection] = lambda: FakeCollection()
 app.dependency_overrides[get_limits_collection] = lambda: FakeLimitsCollection()
+app.dependency_overrides[get_profiles_collection] = lambda: FakeProfilesCollection()
 client = TestClient(app)  # lifespan is skipped: get_collection is overridden
 HEAD = {"X-API-Key": "test-key"}
 
@@ -295,4 +313,27 @@ def test_limits_get_put_remove():
     # rejection: negative limit and missing auth
     assert client.put("/api/limits", headers=HEAD, json={"monthly_limit": -5}).status_code == 400
     assert client.get("/api/limits").status_code == 401
+
+
+def test_profile_avatar_get_put_remove():
+    profiles_store.clear()
+    # not set yet -> null avatar
+    r = client.get("/api/profile", headers=HEAD)
+    assert r.status_code == 200 and r.json()["profile"]["avatar"] is None
+
+    # store a data-URL avatar
+    avatar = "data:image/jpeg;base64,/9j/4AAQ=="
+    r = client.put("/api/profile", headers=HEAD, json={"avatar": avatar})
+    assert r.status_code == 200 and r.json()["profile"]["avatar"] == avatar
+    r = client.get("/api/profile", headers=HEAD)
+    assert r.json()["profile"]["avatar"] == avatar
+    assert profiles_store and profiles_store[0]["user"] == settings.default_user
+
+    # remove it
+    r = client.put("/api/profile", headers=HEAD, json={"avatar": None})
+    assert r.status_code == 200 and r.json()["profile"]["avatar"] is None
+
+    # reject non-image payloads and missing auth
+    assert client.put("/api/profile", headers=HEAD, json={"avatar": "https://example.com/pic.jpg"}).status_code == 400
+    assert client.get("/api/profile").status_code == 401
 

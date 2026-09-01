@@ -55,6 +55,7 @@ const icons = {
 
 let expenses = [];
 let monthlyLimit = null;
+let avatarData = null;
 const state = { preset: 'all', payment: 'all', q: '', sort: 'newest', chartRange: 'month' };
 
 function dateOf(value) {
@@ -464,6 +465,88 @@ async function loadLimit() {
   }
 }
 
+async function loadProfile() {
+  if (!KEY) return;
+  try {
+    const response = await apiFetch(`/api/profile?key=${encodeURIComponent(KEY)}`, { cache: 'no-store' });
+    if (!response.ok) return;
+    avatarData = (await response.json()).profile?.avatar || null;
+    render();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+/** Downscale a picked photo to a ~256px JPEG data URL so it stores cheaply. */
+function fileToAvatar(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read image'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('That file is not a valid image'));
+      img.onload = () => {
+        const MAX = 256;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function saveAvatar(file) {
+  if (!KEY) {
+    showTab('profile');
+    syncProfileKeyUi('Save your API key first', 'err');
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    alert('Photo is too large. Pick one under 8 MB.');
+    return;
+  }
+  try {
+    const avatar = await fileToAvatar(file);
+    const response = await apiFetch(`/api/profile?key=${encodeURIComponent(KEY)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatar }),
+    });
+    if (!response.ok) throw new Error('Could not save photo');
+    avatarData = avatar;
+    render();
+    $('#status').textContent = 'Profile photo saved';
+  } catch (error) {
+    console.error(error);
+    alert('Could not save your photo. Try again.');
+  }
+}
+
+async function removeAvatarPhoto() {
+  if (!KEY || !avatarData) return;
+  try {
+    const response = await apiFetch(`/api/profile?key=${encodeURIComponent(KEY)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatar: null }),
+    });
+    if (!response.ok) throw new Error('Could not remove photo');
+    avatarData = null;
+    render();
+    $('#status').textContent = 'Profile photo removed';
+  } catch (error) {
+    console.error(error);
+    alert('Could not remove your photo. Try again.');
+  }
+}
+
 function maskKey(key) {
   if (!key) return '';
   if (key.length <= 8) return '••••••••';
@@ -481,30 +564,59 @@ function syncProfileKeyUi(message = '', kind = '') {
   status.className = `profile-key-status${kind ? ` ${kind}` : ''}`;
 }
 
+function applyAvatar(el, name, fallback) {
+  if (!el) return;
+  if (avatarData) {
+    el.style.backgroundImage = `url("${avatarData}")`;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center';
+    el.textContent = '';
+    el.classList.add('has-photo');
+  } else {
+    el.style.backgroundImage = '';
+    el.style.backgroundSize = '';
+    el.style.backgroundPosition = '';
+    el.textContent = fallback;
+    el.classList.remove('has-photo');
+  }
+}
+
 function updateProfileIdentity() {
   const name = connectedUserName();
   const avatar = $('#profileAvatar');
   const title = $('#profileName');
   const subtitle = $('#profileSubtitle');
   const dashboardName = $('#dashboardName');
+  const dashAvatar = $('#dashAvatar');
+  const editAvatarLink = $('#editAvatarLink');
+  const removeAvatar = $('#removeAvatar');
+  const avatarSep = $('.avatar-row-sep');
+  const hasPhoto = Boolean(KEY && avatarData);
   if (!KEY) {
     avatar.textContent = '?';
     title.textContent = 'Not connected';
     subtitle.textContent = 'Paste your API key below to load expenses';
     if (dashboardName) dashboardName.textContent = '';
-    return;
-  }
-  if (name) {
+    applyAvatar(avatar, '', '?');
+    applyAvatar(dashAvatar, '', '');
+  } else if (name) {
     avatar.textContent = name.slice(0, 1).toUpperCase();
     title.textContent = name;
     subtitle.textContent = 'Personal expense tracker';
     if (dashboardName) dashboardName.textContent = name;
+    applyAvatar(avatar, name, name.slice(0, 1).toUpperCase());
+    applyAvatar(dashAvatar, name, name.slice(0, 1).toUpperCase());
   } else {
     avatar.textContent = '✓';
     title.textContent = 'Connected';
     subtitle.textContent = 'API key saved on this device';
     if (dashboardName) dashboardName.textContent = 'Expenses';
+    applyAvatar(avatar, '', '✓');
+    applyAvatar(dashAvatar, '', '✓');
   }
+  if (editAvatarLink) editAvatarLink.hidden = !KEY;
+  if (removeAvatar) removeAvatar.hidden = !hasPhoto;
+  if (avatarSep) avatarSep.hidden = !hasPhoto;
 }
 
 function chartWindowTotal() {
@@ -621,6 +733,7 @@ async function load({ quiet = false } = {}) {
     $('#status').textContent = 'Updated just now';
     syncProfileKeyUi(`Connected · ${maskKey(KEY)}`, 'ok');
     loadLimit();
+    loadProfile();
     return true;
   } catch (error) {
     console.error(error);
@@ -653,6 +766,8 @@ async function saveApiKey() {
 function clearApiKey() {
   KEY = '';
   expenses = [];
+  monthlyLimit = null;
+  avatarData = null;
   writeStoredApiKey('');
   $('#apiKeyInput').value = '';
   render();
@@ -817,6 +932,16 @@ $('#limitInput').addEventListener('keydown', event => {
     saveLimit();
   }
 });
+
+$('#dashAvatar').onclick = () => showTab('profile');
+$('#avatarEdit').onclick = () => $('#avatarInput').click();
+$('#editAvatarLink').onclick = () => $('#avatarInput').click();
+$('#avatarInput').onchange = event => {
+  const file = event.target.files && event.target.files[0];
+  if (file) saveAvatar(file);
+  event.target.value = '';
+};
+$('#removeAvatar').onclick = removeAvatarPhoto;
 
 render();
 syncProfileKeyUi();

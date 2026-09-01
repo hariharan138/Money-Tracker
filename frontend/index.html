@@ -27,10 +27,13 @@
           <h1 id="dashboardName">Hari</h1>
           <p id="status" class="sync-status">Your spending overview</p>
         </div>
-        <button id="reloadBtn" class="reload-btn" type="button" title="Reload" aria-label="Reload data">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
-          Reload
-        </button>
+        <div class="topbar-actions">
+          <button id="dashAvatar" class="dash-avatar" type="button" title="Profile" aria-label="Open profile"></button>
+          <button id="reloadBtn" class="reload-btn" type="button" title="Reload" aria-label="Reload data">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+            Reload
+          </button>
+        </div>
       </header>
 
       <section class="hero" aria-label="Expense balance">
@@ -46,6 +49,11 @@
         </div>
       </section>
 
+      <section class="overview">
+        <h2>Overview</h2>
+        <div id="stats" class="stats"></div>
+      </section>
+
       <section class="budget" id="budgetSection" hidden>
         <div class="budget-head">
           <h2>Monthly limit</h2>
@@ -54,11 +62,6 @@
         <div id="budgetAlert" class="budget-alert" hidden></div>
         <div id="budgetBars" class="budget-bars"></div>
         <p id="budgetSummary" class="budget-summary"></p>
-      </section>
-
-      <section class="overview">
-        <h2>Overview</h2>
-        <div id="stats" class="stats"></div>
       </section>
 
       <section class="dashboard-recent">
@@ -167,9 +170,20 @@
 
     <!-- 5. User details -->
     <section class="tab-panel profile" data-panel="profile">
-      <div class="profile-avatar" id="profileAvatar">?</div>
+      <div class="profile-avatar-wrap">
+        <div class="profile-avatar" id="profileAvatar">?</div>
+        <button id="avatarEdit" class="avatar-edit" type="button" title="Change photo" aria-label="Change photo">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8a2 2 0 0 1 2-2h2l1.5-2h6l1.5 2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V8z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
+        </button>
+        <input id="avatarInput" type="file" accept="image/*" hidden>
+      </div>
       <h2 id="profileName">Not connected</h2>
       <p id="profileSubtitle">Open Profile and paste your API key to load expenses</p>
+      <p class="profile-avatar-row">
+        <button id="editAvatarLink" class="link" type="button" hidden>Change photo</button>
+        <span class="avatar-row-sep" hidden>·</span>
+        <button id="removeAvatar" class="link" type="button" hidden>Remove photo</button>
+      </p>
       <div class="profile-card"><span>Total expenses</span><strong id="profileTotal">₹0</strong></div>
       <div class="profile-card"><span>Transactions recorded</span><strong id="profileCount">0</strong></div>
       <div class="profile-card"><span>Preferred payment</span><strong id="profilePayment">—</strong></div>

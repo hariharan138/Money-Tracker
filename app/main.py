@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import lifespan
 from .routes.expenses import router
 from .routes.limits import router as limits_router
+from .routes.profiles import router as profiles_router
 from .routes.view import router as view_router
 from .config import cors_origins, settings
 
@@ -46,6 +47,7 @@ if _cors_origins:
 
 app.include_router(router)
 app.include_router(limits_router)
+app.include_router(profiles_router)
 app.include_router(view_router)
 
 
