@@ -2,6 +2,8 @@ const PRIMARY_API_URL = import.meta.env.PRIMARY_API_URL || '';
 const SECONDARY_API_URL = import.meta.env.SECONDARY_API_URL || '';
 // Fail over quickly so a cold primary does not stall the UI.
 const PRIMARY_TIMEOUT_MS = 3_000;
+// Safe to send twice. POST is not, so it never leaves the primary.
+const RETRYABLE = new Set(['GET', 'HEAD', 'PUT', 'DELETE']);
 
 function apiUrl(baseUrl, path) {
   return new URL(path, `${baseUrl.replace(/\/$/, '')}/`).toString();
@@ -65,6 +67,10 @@ async function fetchPrimaryWithTimeout(url, init) {
  *
  * Only network failures, primary timeouts, and primary 5xx responses use the
  * secondary. Authentication and normal client errors are returned unchanged.
+ *
+ * POST is never retried: both backends write to the same database, so a
+ * primary that answered slowly (Render cold starts routinely beat the 3s
+ * timeout) would have its insert repeated and the expense logged twice.
  */
 export async function apiFetch(path, init = {}) {
   if (!PRIMARY_API_URL || !SECONDARY_API_URL) {
@@ -73,6 +79,11 @@ export async function apiFetch(path, init = {}) {
 
   const primaryUrl = apiUrl(PRIMARY_API_URL, path);
   const secondaryUrl = apiUrl(SECONDARY_API_URL, path);
+
+  if (!RETRYABLE.has((init.method || 'GET').toUpperCase())) {
+    return fetch(primaryUrl, buildFetchInit(init));
+  }
+
   const primary = await fetchPrimaryWithTimeout(primaryUrl, init);
 
   if (primary.response && primary.response.status < 500) return primary.response;

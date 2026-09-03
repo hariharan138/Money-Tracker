@@ -15,7 +15,9 @@ router = APIRouter(prefix="/api", tags=["limits"])
 
 
 class LimitIn(BaseModel):
-    monthly_limit: float | None = Field(default=None, ge=0)
+    # gt, not ge: a 0 limit means division by zero on the dashboard.
+    # null is how you clear a limit.
+    monthly_limit: float | None = Field(default=None, gt=0)
 
 
 def _to_json(d: dict) -> dict:

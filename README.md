@@ -12,7 +12,8 @@ app/
 ├── config.py          # env vars via pydantic-settings
 ├── database.py        # AsyncMongoClient lifespan + get_collection dependency
 ├── models/expense.py  # ExpenseIn / ExpenseCreated
-├── routes/expenses.py # POST/GET/DELETE /api/expenses + key auth
+├── routes/auth.py     # accounts, login sessions, credential resolution
+├── routes/expenses.py # POST/GET/DELETE /api/expenses
 └── routes/view.py     # GET / -> HTML dashboard
 test_api.py            # smoke test, no DB required
 frontend/              # standalone static dashboard, deploy independently
@@ -40,9 +41,10 @@ or any static host. It does not need a backend process.
 4. Run `cd frontend && npm install && npm run build`, then deploy `frontend/dist`.
 5. Open the frontend at `https://expenses.example.com` (no key in the URL),
    **or** once with `/?key=YOUR_API_KEY`.
-6. Go to **Profile**, paste your API key (`SHORTCUT_API_KEY` or an
-   `EXPENSE_USERS` key), and tap **Save & load data**. The key is stored only
-   in this browser’s localStorage.
+6. Go to **Profile** and either **Create account** / **Log in** with a
+   username and password, or — if you were handed a key instead — paste it in
+   the **API key** box and tap **Save & load data**. Either way the credential
+   is stored only in this browser’s localStorage.
 
 `?key=` still works: the app saves it and strips it from the address bar so
 Home Screen / PWA launches (manifest `start_url: /`) keep working without the
@@ -53,6 +55,42 @@ Profile), then Share → Add to Home Screen. Do **not** rely on `?key=` in the
 Home Screen URL — the saved key in localStorage is what loads your data.
 
 ## API
+
+### Authentication
+
+Every endpoint below takes one credential, as `X-API-Key: <value>` (or
+`?key=<value>` for plain links). Three kinds are accepted:
+
+| Credential | Where it comes from | Expires |
+|---|---|---|
+| Env key | `SHORTCUT_API_KEY` / `EXPENSE_USERS` | never |
+| Session token | `POST /api/auth/login` | 30 days, or on logout |
+| Account key | issued at registration, shown in Profile | never |
+
+### `POST /api/auth/register` / `POST /api/auth/login`
+
+Body: `{"username": "alice", "password": "at least 8 chars"}`. Usernames are
+lowercased, 3–32 characters of `A-Z a-z 0-9 . _ -`, and unique.
+
+```json
+{ "success": true, "token": "…", "expires_at": "2026-10-03T20:16:15+00:00",
+  "username": "alice", "api_key": "…" }
+```
+
+Use `token` for the browser and `api_key` for the iPhone Shortcut (the phone
+can't run a login flow). Passwords are stored as `scrypt` hashes, never in the
+clear. `409` means the username is taken, `401` a bad password.
+
+### `POST /api/auth/logout`
+
+Deletes the session behind the supplied token. The account's `api_key` keeps
+working, so logging out of the browser never breaks the Shortcut.
+
+### `GET /api/auth/me`
+
+`{"username": "alice", "account": true, "api_key": "…"}`. `account` is `false`
+for env-configured users, whose `api_key` comes back `null` — they already
+have their key.
 
 ### `POST /api/expenses`
 
@@ -152,11 +190,19 @@ the page source — the JS reads it from the URL you bookmarked.
 
 ### Multiple people
 
-Every key belongs to one person and the data is **strictly isolated**: the
-server tags each expense with whoever's key sent it, and every read/delete is
-locked to that user — a key can never see or touch anyone else's expenses.
-The main key is `DEFAULT_USER` ("Me" by default); legacy expenses created
-before multi-user count as the default user's. To add someone:
+Every credential belongs to one person and the data is **strictly isolated**:
+the server tags each expense with whoever's credential sent it, and every
+read/delete is locked to that user — nobody can see or touch anyone else's
+expenses, limit, or profile photo. The main key is `DEFAULT_USER` ("Me" by
+default); legacy expenses created before multi-user count as the default
+user's.
+
+**The easy way:** send them the frontend URL and let them tap **Create
+account** in Profile. Nothing to configure and no redeploy. A registered
+username can never collide with an env user's name (that would merge two
+people's data), so registration returns `409` if it does.
+
+**The env way**, for the Shortcut-only users who never open the dashboard:
 
 1. Generate a key for them:
    `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`

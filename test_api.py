@@ -6,9 +6,16 @@ os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017")
 os.environ.setdefault("SHORTCUT_API_KEY", "test-key")
 
 from fastapi.testclient import TestClient  # noqa: E402
+from pymongo.errors import DuplicateKeyError  # noqa: E402
 
 from app.config import settings  # noqa: E402
-from app.database import get_collection, get_limits_collection, get_profiles_collection  # noqa: E402
+from app.database import (  # noqa: E402
+    get_collection,
+    get_limits_collection,
+    get_profiles_collection,
+    get_sessions_collection,
+    get_users_collection,
+)
 from app.main import app  # noqa: E402
 
 inserted: list[dict] = []
@@ -93,7 +100,41 @@ class FakeProfilesCollection:
         return type("R", (), {"upserted_id": "x"})()
 
 
+class FakeStore:
+    """In-memory stand-in for a Mongo collection: exact-match find_one,
+    insert_one with unique-key enforcement, delete_one."""
+
+    def __init__(self, *unique):
+        self.docs: list[dict] = []
+        self.unique = unique
+
+    def clear(self):
+        self.docs.clear()
+
+    async def find_one(self, query):
+        return next((d for d in self.docs
+                     if all(d.get(k) == v for k, v in query.items())), None)
+
+    async def insert_one(self, doc):
+        for field in self.unique:
+            if field in doc and any(d.get(field) == doc[field] for d in self.docs):
+                raise DuplicateKeyError(f"duplicate {field}")
+        self.docs.append(doc)
+        return type("R", (), {"inserted_id": "x"})()
+
+    async def delete_one(self, query):
+        hit = await self.find_one(query)
+        if hit:
+            self.docs.remove(hit)
+        return type("R", (), {"deleted_count": 1 if hit else 0})()
+
+
+users_store = FakeStore("username", "api_key")
+sessions_store = FakeStore("token")
+
 app.dependency_overrides[get_collection] = lambda: FakeCollection()
+app.dependency_overrides[get_users_collection] = lambda: users_store
+app.dependency_overrides[get_sessions_collection] = lambda: sessions_store
 app.dependency_overrides[get_limits_collection] = lambda: FakeLimitsCollection()
 app.dependency_overrides[get_profiles_collection] = lambda: FakeProfilesCollection()
 client = TestClient(app)  # lifespan is skipped: get_collection is overridden
@@ -187,6 +228,26 @@ def test_list_filters_build_query():
     assert "$or" in q
 
 
+def test_search_keeps_the_user_scope():
+    """Regression: the text search used to write query["$or"], overwriting the
+    ownership clause, so searching as the default user returned everyone's rows."""
+    client.get("/api/expenses?key=test-key")
+    assert "user" in last_query["value"]
+    client.get("/api/expenses?key=test-key&q=dinner")
+    assert "user" in last_query["value"], "search dropped the ownership filter"
+
+
+def test_to_filter_includes_the_whole_end_day():
+    client.get("/api/expenses?key=test-key&to=2026-08-31")
+    end = last_query["value"]["date"]["$lte"]
+    assert (end.day, end.hour, end.minute) == (31, 23, 59)
+
+
+def test_junk_key_is_401_not_500():
+    # compare_digest raises on non-ASCII str; ?key= accepts any unicode
+    assert client.get("/api/expenses?key=caf%C3%A9").status_code == 401
+
+
 def test_delete_validation_and_flow():
     assert client.delete("/api/expenses/not-an-id?key=test-key").status_code == 400
     oid = "66c800000000000000000000"
@@ -217,6 +278,22 @@ def test_view_page_renders_dashboard():
     assert len(docs) == 2  # Two fake expenses in test data
     assert docs[0]["category"] == "Food"
     assert client.get("/").status_code == 401  # no key -> 401
+
+
+def test_cors_allows_the_browser_to_post():
+    """The dashboard adds expenses with POST; it was missing from allow_methods."""
+    from app.main import _cors_origins
+
+    origin = _cors_origins[0] if _cors_origins else None
+    if origin is None:
+        return  # CORS not configured in this environment
+    for method in ("GET", "POST", "PUT", "DELETE"):
+        r = client.options("/api/expenses", headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": method,
+            "Access-Control-Request-Headers": "content-type,x-api-key",
+        })
+        assert r.status_code == 200, f"{method}: {r.text}"
 
 
 def test_icons_served():
@@ -257,9 +334,9 @@ def test_view_scoped_to_owner_only():
         last_query.clear()
         r = client.get("/?key=test-key")
         assert r.status_code == 200
-        scope = last_query["value"]
-        assert {"user": "Hari"} in scope["$or"]
-        assert {"user": {"$exists": False}} in scope["$or"]
+        # one `user` key, not $or — see user_scope(); null covers legacy docs
+        # that have no `user` field at all
+        assert last_query["value"] == {"user": {"$in": ["Hari", None]}}
         # Wife's page is hard-locked to her docs
         last_query.clear()
         r = client.get("/?key=wife-secret-key")
@@ -310,8 +387,9 @@ def test_limits_get_put_remove():
     r = client.put("/api/limits", headers=HEAD, json={"monthly_limit": None})
     assert r.status_code == 200 and r.json()["limit"]["monthly_limit"] is None
 
-    # rejection: negative limit and missing auth
+    # rejection: negative/zero limit and missing auth (0 divided by zero on the dashboard)
     assert client.put("/api/limits", headers=HEAD, json={"monthly_limit": -5}).status_code == 400
+    assert client.put("/api/limits", headers=HEAD, json={"monthly_limit": 0}).status_code == 400
     assert client.get("/api/limits").status_code == 401
 
 
@@ -337,3 +415,116 @@ def test_profile_avatar_get_put_remove():
     assert client.put("/api/profile", headers=HEAD, json={"avatar": "https://example.com/pic.jpg"}).status_code == 400
     assert client.get("/api/profile").status_code == 401
 
+
+
+# ---------------------------------------------------------------- accounts
+
+
+def register(username="alice", password="correct-horse"):
+    users_store.clear()
+    sessions_store.clear()
+    return client.post("/api/auth/register",
+                       json={"username": username, "password": password})
+
+
+def test_register_returns_a_session_and_a_shortcut_key():
+    r = register()
+    assert r.status_code == 201
+    body = r.json()
+    assert body["username"] == "alice"
+    assert body["token"] and body["api_key"]
+    assert body["token"] != body["api_key"]
+    # the password is never stored in the clear
+    stored = users_store.docs[0]["password_hash"]
+    assert stored.startswith("scrypt$") and "correct-horse" not in stored
+
+
+def test_register_rejects_duplicates_and_weak_passwords():
+    register()
+    assert client.post("/api/auth/register",
+                       json={"username": "Alice", "password": "another-one"}
+                       ).status_code == 409  # same name, different case
+    assert client.post("/api/auth/register",
+                       json={"username": "bob", "password": "short"}
+                       ).status_code == 400
+    assert client.post("/api/auth/register",
+                       json={"username": "b b", "password": "correct-horse"}
+                       ).status_code == 400
+
+
+def test_register_cannot_hijack_an_env_users_name():
+    """The username is what expenses are scoped by, so reusing an env user's
+    name would hand the new account that person's existing data."""
+    users_store.clear()
+    orig = settings.expense_users
+    settings.expense_users = "Wife:wife-secret-key"
+    try:
+        for name in ("wife", "WIFE", settings.default_user.lower()):
+            r = client.post("/api/auth/register",
+                            json={"username": name, "password": "correct-horse"})
+            assert r.status_code == 409, name
+    finally:
+        settings.expense_users = orig
+
+
+def test_login_flow_and_wrong_password():
+    register()
+    assert client.post("/api/auth/login",
+                       json={"username": "alice", "password": "wrong-password"}
+                       ).status_code == 401
+    assert client.post("/api/auth/login",
+                       json={"username": "nobody", "password": "correct-horse"}
+                       ).status_code == 401
+    r = client.post("/api/auth/login",
+                    json={"username": "ALICE", "password": "correct-horse"})
+    assert r.status_code == 200 and r.json()["token"]
+
+
+def test_session_token_and_account_key_both_authenticate():
+    body = register().json()
+    for credential in (body["token"], body["api_key"]):
+        r = client.get("/api/expenses", headers={"X-API-Key": credential})
+        assert r.status_code == 200
+        assert last_query["value"] == {"user": "alice"}  # scoped to the account
+
+
+def test_expired_session_is_rejected():
+    from datetime import timedelta
+
+    from app.models.expense import utcnow
+
+    token = register().json()["token"]
+    assert client.get("/api/expenses", headers={"X-API-Key": token}).status_code == 200
+    # Mongo's TTL reaper lags by up to a minute, so expiry is checked in code
+    sessions_store.docs[0]["expires_at"] = utcnow() - timedelta(seconds=1)
+    assert client.get("/api/expenses", headers={"X-API-Key": token}).status_code == 401
+
+
+def test_logout_kills_the_token_but_not_the_shortcut_key():
+    body = register().json()
+    token, api_key = body["token"], body["api_key"]
+    assert client.post("/api/auth/logout", headers={"X-API-Key": token}).status_code == 200
+    assert client.get("/api/expenses", headers={"X-API-Key": token}).status_code == 401
+    # the phone keeps working; logging out of the browser is not a lockout
+    assert client.get("/api/expenses", headers={"X-API-Key": api_key}).status_code == 200
+
+
+def test_me_distinguishes_accounts_from_env_users():
+    body = register().json()
+    mine = client.get("/api/auth/me", headers={"X-API-Key": body["token"]}).json()
+    assert mine == {"success": True, "username": "alice", "account": True,
+                    "api_key": body["api_key"]}
+    env = client.get("/api/auth/me", headers=HEAD).json()
+    assert env["account"] is False and env["api_key"] is None
+    assert env["username"] == settings.default_user
+    assert client.get("/api/auth/me").status_code == 401
+
+
+def test_account_expenses_are_scoped_to_the_account():
+    token = register().json()["token"]
+    inserted.clear()
+    assert client.post("/api/expenses", json={"amount": 9, "category": "Food"},
+                       headers={"X-API-Key": token}).status_code == 201
+    assert inserted[0]["user"] == "alice"
+    client.delete("/api/expenses/66c800000000000000000000",
+                  headers={"X-API-Key": token})

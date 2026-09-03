@@ -285,6 +285,8 @@ let waitingForInitialData=!hasBootstrapData;
 const state = {q:'',preset:'all',payment:'all',sort:'newest'};
 let lastFetch = new Date();
 let chart = null;
+let coldRetries=0;            // cap the cold-start retry loop
+const MAX_COLD_RETRIES=10;
 
 /* MongoDB stores dates in UTC, but its JSON representation can omit the
    offset (for example, "2026-08-23T19:30:00").  Browsers interpret that form
@@ -310,8 +312,8 @@ function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x;}
 function rangeFor(p){
   const now=new Date();
   if(p==='today') return [startOfDay(now),null];
-  if(p==='7') return [startOfDay(now)-6*864e5,null];
-  if(p==='30') return [startOfDay(now)-29*864e5,null];
+  if(p==='7') return [new Date(startOfDay(now)-6*864e5),null];
+  if(p==='30') return [new Date(startOfDay(now)-29*864e5),null];
   if(p==='month') return [new Date(now.getFullYear(),now.getMonth(),1),null];
   return [null,null];
 }
@@ -340,7 +342,8 @@ function filtered(){
 }
 function sum(a){return a.reduce((s,d)=>s+Number(d.amount||0),0)}
 function cnt(a,f){return a.reduce((m,d)=>{const k=f(d)||'–';m[k]=(m[k]||0)+Number(d.amount||0);return m},{});}
-function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);
+  return d.innerHTML.replaceAll('"','&quot;').replaceAll("'",'&#39;')}  // quotes too: esc() also fills attributes
 function dayLabel(k){
   const [y,m,d]=k.split('-').map(Number),dt=new Date(y,m-1,d),now=new Date();
   if(k===dayKey(now))return'Today';
@@ -453,6 +456,7 @@ async function refresh(){
     const j=await r.json();
     if(j.success && j.expenses){
       docs=j.expenses;
+      coldRetries=0;
       waitingForInitialData=false;
       lastFetch=new Date();
       stamp();
@@ -463,7 +467,8 @@ async function refresh(){
       throw new Error('Invalid response format');
     }
   }catch(e){
-    if(e.name==='AbortError'){
+    if(e.name==='AbortError' && coldRetries<MAX_COLD_RETRIES){
+      coldRetries++;
       $('#updated').textContent='Server waking up... (cold start)';
       setTimeout(refresh,2000); // Retry after 2 seconds
     }else{
@@ -537,6 +542,7 @@ async function poll(){
     const j=await r.json();
     if(j.success && j.expenses){
       docs=j.expenses;
+      coldRetries=0;
       waitingForInitialData=false;
       lastFetch=new Date();
       stamp();
@@ -546,7 +552,8 @@ async function poll(){
       throw new Error('Invalid response format');
     }
   }catch(e){
-    if(e.name==='AbortError'){
+    if(e.name==='AbortError' && coldRetries<MAX_COLD_RETRIES){
+      coldRetries++;
       $('#updated').textContent='Server waking up... (cold start)';
       // Retry after 2 seconds for cold start
       setTimeout(poll,2000);

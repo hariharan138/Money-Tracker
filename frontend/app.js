@@ -56,6 +56,7 @@ const icons = {
 let expenses = [];
 let monthlyLimit = null;
 let avatarData = null;
+let account = null;   // { username, api_key } once signed in with a password
 const state = { preset: 'all', payment: 'all', q: '', sort: 'newest', chartRange: 'month' };
 
 function dateOf(value) {
@@ -84,7 +85,8 @@ function sum(items) {
 function escapeHtml(value) {
   const node = document.createElement('div');
   node.textContent = value ?? '';
-  return node.innerHTML;
+  // quotes too: this also fills attributes (data-delete="…")
+  return node.innerHTML.replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
 
 function range() {
@@ -271,6 +273,7 @@ function preferredPayment() {
 }
 
 function connectedUserName() {
+  if (account?.username) return account.username;
   const named = expenses.find(item => (item.user || '').trim())?.user?.trim();
   return named || '';
 }
@@ -314,7 +317,7 @@ function weekStartKey() {
 }
 
 function budgetAlert(monthSpent) {
-  if (monthlyLimit == null) return null;
+  if (monthlyLimit == null || monthlyLimit <= 0) return null;
   const ratio = monthSpent / monthlyLimit;
   if (ratio >= 1) {
     return { kind: 'danger', text: `Monthly limit hit — you've spent ${INR.format(monthSpent)} of ${INR.format(monthlyLimit)}.` };
@@ -416,11 +419,11 @@ async function saveLimit() {
     return;
   }
   try {
-    const response = await apiFetch(`/api/limits?key=${encodeURIComponent(KEY)}`, {
+    const response = await apiFetch('/api/limits', authed({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ monthly_limit: value }),
-    });
+    }));
     if (!response.ok) throw new Error('Could not save limit');
     monthlyLimit = value;
     closeLimitModal();
@@ -433,14 +436,14 @@ async function saveLimit() {
 }
 
 async function removeLimitLocal() {
-  if (!monthlyLimit) return;
+  if (monthlyLimit == null) return;
   if (!KEY) return;
   try {
-    const response = await apiFetch(`/api/limits?key=${encodeURIComponent(KEY)}`, {
+    const response = await apiFetch('/api/limits', authed({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ monthly_limit: null }),
-    });
+    }));
     if (!response.ok) throw new Error('Could not remove limit');
     monthlyLimit = null;
     closeLimitModal();
@@ -455,7 +458,7 @@ async function removeLimitLocal() {
 async function loadLimit() {
   if (!KEY) return;
   try {
-    const response = await apiFetch(`/api/limits?key=${encodeURIComponent(KEY)}`, { cache: 'no-store' });
+    const response = await apiFetch('/api/limits', authed({ cache: 'no-store' }));
     if (!response.ok) return;
     const data = (await response.json()).limit;
     monthlyLimit = data?.monthly_limit ?? null;
@@ -468,7 +471,7 @@ async function loadLimit() {
 async function loadProfile() {
   if (!KEY) return;
   try {
-    const response = await apiFetch(`/api/profile?key=${encodeURIComponent(KEY)}`, { cache: 'no-store' });
+    const response = await apiFetch('/api/profile', authed({ cache: 'no-store' }));
     if (!response.ok) return;
     avatarData = (await response.json()).profile?.avatar || null;
     render();
@@ -514,11 +517,11 @@ async function saveAvatar(file) {
   }
   try {
     const avatar = await fileToAvatar(file);
-    const response = await apiFetch(`/api/profile?key=${encodeURIComponent(KEY)}`, {
+    const response = await apiFetch('/api/profile', authed({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ avatar }),
-    });
+    }));
     if (!response.ok) throw new Error('Could not save photo');
     avatarData = avatar;
     render();
@@ -532,11 +535,11 @@ async function saveAvatar(file) {
 async function removeAvatarPhoto() {
   if (!KEY || !avatarData) return;
   try {
-    const response = await apiFetch(`/api/profile?key=${encodeURIComponent(KEY)}`, {
+    const response = await apiFetch('/api/profile', authed({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ avatar: null }),
-    });
+    }));
     if (!response.ok) throw new Error('Could not remove photo');
     avatarData = null;
     render();
@@ -544,6 +547,120 @@ async function removeAvatarPhoto() {
   } catch (error) {
     console.error(error);
     alert('Could not remove your photo. Try again.');
+  }
+}
+
+/** Key goes in a header, never the query string: ?key= lands in server logs
+ *  on every poll, forever. The backend accepts both. */
+function authed(init = {}) {
+  return { ...init, headers: { ...(init.headers || {}), 'X-API-Key': KEY } };
+}
+
+function setAuthStatus(message = '', kind = '') {
+  const el = $('#authStatus');
+  el.textContent = message;
+  el.className = `profile-key-status${kind ? ` ${kind}` : ''}`;
+}
+
+function syncAuthUi() {
+  const signedIn = Boolean(account);
+  $('#authForm').hidden = signedIn;
+  $('#authAccount').hidden = !signedIn;
+  // the paste-a-key box is only for people running on an EXPENSE_USERS key
+  $('#apiKeyBox').hidden = signedIn;
+  if (signedIn) {
+    $('#authWho').textContent = account.username;
+    $('#accountKey').value = account.api_key || '';
+  }
+}
+
+/** Are we on a password account, or just holding an API key? */
+async function loadMe() {
+  if (!KEY) {
+    account = null;
+    syncAuthUi();
+    return;
+  }
+  try {
+    const response = await apiFetch('/api/auth/me', authed({ cache: 'no-store' }));
+    const data = response.ok ? await response.json() : {};
+    account = data.account ? { username: data.username, api_key: data.api_key } : null;
+  } catch (error) {
+    console.error(error);
+    account = null;
+  }
+  render();
+}
+
+function authError(status, mode) {
+  if (status === 409) return 'That username is taken. Pick another.';
+  if (status === 401) return 'Wrong username or password.';
+  if (status === 400) {
+    return mode === 'register'
+      ? 'Username: 3–32 letters, numbers, dot, dash or underscore. Password: 8 characters or more.'
+      : 'Check your username and password.';
+  }
+  return `Could not sign you in (${status}).`;
+}
+
+async function doAuth(mode) {
+  const username = $('#authUsername').value.trim();
+  const password = $('#authPassword').value;
+  if (!username || !password) {
+    setAuthStatus('Enter a username and password', 'err');
+    return;
+  }
+  setAuthStatus(mode === 'register' ? 'Creating your account…' : 'Logging in…');
+  try {
+    // POST goes straight to the primary (no failover), so a sleeping Render
+    // instance means this waits for the cold start rather than double-posting.
+    const response = await apiFetch(`/api/auth/${mode}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!response.ok) {
+      setAuthStatus(authError(response.status, mode), 'err');
+      return;
+    }
+    const data = await response.json();
+    KEY = data.token;
+    writeStoredApiKey(KEY);
+    account = { username: data.username, api_key: data.api_key };
+    $('#authPassword').value = '';
+    setAuthStatus(`Signed in as ${data.username}`, 'ok');
+    if (await load()) showTab('dashboard');
+  } catch (error) {
+    console.error(error);
+    setAuthStatus('Could not reach the server. Try again.', 'err');
+  }
+}
+
+async function logout() {
+  if (KEY) {
+    try {
+      await apiFetch('/api/auth/logout', authed({ method: 'POST' }));
+    } catch (error) {
+      console.warn(error);  // the token is going away locally either way
+    }
+  }
+  account = null;
+  clearApiKey();
+  setAuthStatus('Logged out');
+}
+
+async function copyShortcutKey() {
+  const key = account?.api_key;
+  if (!key) return;
+  try {
+    await navigator.clipboard.writeText(key);
+    setAuthStatus('Shortcut key copied', 'ok');
+  } catch {
+    // clipboard blocked (http, or no user-gesture): show it instead
+    const field = $('#accountKey');
+    field.type = 'text';
+    field.select();
+    setAuthStatus('Copy was blocked — the key is shown above, copy it by hand', 'err');
   }
 }
 
@@ -595,7 +712,7 @@ function updateProfileIdentity() {
   if (!KEY) {
     avatar.textContent = '?';
     title.textContent = 'Not connected';
-    subtitle.textContent = 'Paste your API key below to load expenses';
+    subtitle.textContent = 'Log in or create an account to load your expenses';
     if (dashboardName) dashboardName.textContent = '';
     applyAvatar(avatar, '', '?');
     applyAvatar(dashAvatar, '', '');
@@ -619,19 +736,17 @@ function updateProfileIdentity() {
   if (avatarSep) avatarSep.hidden = !hasPhoto;
 }
 
-function chartWindowTotal() {
+/** Is this expense inside the range the Analytics tab is showing? */
+function inChartWindow(item) {
   const now = new Date();
-  if (state.chartRange === 'week') {
-    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
-    return sum(expenses.filter(item => dateOf(item.date) >= from));
-  }
-  if (state.chartRange === 'year') {
-    return sum(expenses.filter(item => dateOf(item.date).getFullYear() === now.getFullYear()));
-  }
-  return sum(expenses.filter(item => {
-    const d = dateOf(item.date);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }));
+  const d = dateOf(item.date);
+  if (state.chartRange === 'week') return d >= new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+  if (state.chartRange === 'year') return d.getFullYear() === now.getFullYear();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
+function chartWindowTotal() {
+  return sum(expenses.filter(inChartWindow));
 }
 
 function render() {
@@ -664,7 +779,7 @@ function render() {
   $('#analyticsTotal').textContent = INR.format(chartWindowTotal());
   $('#analyticsDate').textContent = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
   $('#analyticsStats').innerHTML = expenses
-    .slice()
+    .filter(inChartWindow)
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 4)
     .map(item => `
@@ -683,6 +798,7 @@ function render() {
   $('#addDateLabel').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
   updateProfileIdentity();
   syncProfileKeyUi();
+  syncAuthUi();
 
   renderChart();
   updateAddPreview();
@@ -714,10 +830,11 @@ async function load({ quiet = false } = {}) {
     return false;
   }
   if (!KEY) {
-    $('#status').textContent = 'Open Profile and paste your API key';
+    $('#status').textContent = 'Open Profile to log in';
     expenses = [];
     render();
     syncProfileKeyUi('Paste your API key, then tap Save & load data');
+    syncAuthUi();
     return false;
   }
   if (!quiet) {
@@ -725,13 +842,14 @@ async function load({ quiet = false } = {}) {
     reloadBtn?.classList.add('is-loading');
   }
   try {
-    const response = await apiFetch(`/api/expenses?key=${encodeURIComponent(KEY)}&limit=1000`, { cache: 'no-store' });
+    const response = await apiFetch('/api/expenses?limit=1000', authed({ cache: 'no-store' }));
     if (response.status === 401) throw new Error('Invalid API key');
     if (!response.ok) throw new Error(`API returned ${response.status}`);
     expenses = (await response.json()).expenses || [];
     render();
     $('#status').textContent = 'Updated just now';
     syncProfileKeyUi(`Connected · ${maskKey(KEY)}`, 'ok');
+    loadMe();
     loadLimit();
     loadProfile();
     return true;
@@ -777,8 +895,10 @@ function clearApiKey() {
 
 async function remove(id) {
   if (!confirm('Delete this expense?')) return;
-  const response = await apiFetch(`/api/expenses/${encodeURIComponent(id)}?key=${encodeURIComponent(KEY)}`, { method: 'DELETE' });
-  if (response.ok) {
+  const response = await apiFetch(`/api/expenses/${encodeURIComponent(id)}`, authed({ method: 'DELETE' }));
+  // 404 means it is already gone (e.g. the primary deleted it, then the
+  // retried request hit the secondary) — same outcome as a clean delete.
+  if (response.ok || response.status === 404) {
     expenses = expenses.filter(item => item.id !== id);
     render();
   } else {
@@ -832,11 +952,11 @@ async function saveExpense(event) {
   saveButton.textContent = 'Saving…';
 
   try {
-    const response = await apiFetch(`/api/expenses?key=${encodeURIComponent(KEY)}`, {
+    const response = await apiFetch('/api/expenses', authed({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount, category, description, payment_method: paymentMethod }),
-    });
+    }));
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
       throw new Error(detail.includes('ReadableStream') ? 'Could not save this expense. Try again.' : 'Could not save this expense.');
@@ -1006,6 +1126,16 @@ $('#avatarInput').onchange = event => {
   event.target.value = '';
 };
 $('#removeAvatar').onclick = removeAvatarPhoto;
+$('#loginBtn').onclick = () => doAuth('login');
+$('#registerBtn').onclick = () => doAuth('register');
+$('#logoutBtn').onclick = logout;
+$('#copyKey').onclick = copyShortcutKey;
+$('#authPassword').addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    doAuth('login');
+  }
+});
 
 render();
 syncProfileKeyUi();

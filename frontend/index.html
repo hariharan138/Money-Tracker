@@ -178,7 +178,7 @@
         <input id="avatarInput" type="file" accept="image/*" hidden>
       </div>
       <h2 id="profileName">Not connected</h2>
-      <p id="profileSubtitle">Open Profile and paste your API key to load expenses</p>
+      <p id="profileSubtitle">Log in or create an account to load your expenses</p>
       <p class="profile-avatar-row">
         <button id="editAvatarLink" class="link" type="button" hidden>Change photo</button>
         <span class="avatar-row-sep" hidden>·</span>
@@ -188,9 +188,35 @@
       <div class="profile-card"><span>Transactions recorded</span><strong id="profileCount">0</strong></div>
       <div class="profile-card"><span>Preferred payment</span><strong id="profilePayment">—</strong></div>
 
-      <div class="profile-key">
+      <div class="profile-key" id="authBox">
+        <label for="authUsername">Account</label>
+        <p class="profile-key-hint">Log in, or create an account. Your expenses, limit and photo are private to your account.</p>
+        <div id="authForm">
+          <input id="authUsername" class="profile-key-input" type="text" autocomplete="username"
+                 autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Username">
+          <input id="authPassword" class="profile-key-input" type="password"
+                 autocomplete="current-password" placeholder="Password (8+ characters)">
+          <div class="profile-key-actions">
+            <button id="loginBtn" class="profile-action" type="button">Log in</button>
+            <button id="registerBtn" class="profile-action profile-action-secondary" type="button">Create account</button>
+          </div>
+        </div>
+        <div id="authAccount" hidden>
+          <p class="profile-key-hint">Signed in as <strong id="authWho"></strong>. Put the key below into your
+            iPhone Shortcut so anything you log there lands in this account.</p>
+          <input id="accountKey" class="profile-key-input" type="password" readonly aria-label="Shortcut API key">
+          <div class="profile-key-actions">
+            <button id="copyKey" class="profile-action profile-action-secondary" type="button">Copy key</button>
+            <button id="logoutBtn" class="profile-action profile-action-secondary" type="button">Log out</button>
+          </div>
+        </div>
+        <p id="authStatus" class="profile-key-status" aria-live="polite"></p>
+      </div>
+
+      <div class="profile-key" id="apiKeyBox">
         <label for="apiKeyInput">API key</label>
-        <p class="profile-key-hint">Get this from your server <code>.env</code> (<code>SHORTCUT_API_KEY</code> or an <code>EXPENSE_USERS</code> key). Saved only on this device.</p>
+        <p class="profile-key-hint">Only if you were given a key instead of an account &mdash; from the server
+          <code>.env</code> (<code>SHORTCUT_API_KEY</code> or an <code>EXPENSE_USERS</code> key). Saved only on this device.</p>
         <input id="apiKeyInput" class="profile-key-input" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your API key">
         <p id="apiKeyStatus" class="profile-key-status" aria-live="polite"></p>
         <div class="profile-key-actions">

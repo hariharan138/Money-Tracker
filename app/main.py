@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import lifespan
+from .routes.auth import router as auth_router
 from .routes.expenses import router
 from .routes.limits import router as limits_router
 from .routes.profiles import router as profiles_router
@@ -41,10 +42,11 @@ if _cors_origins:
         CORSMiddleware,
         allow_origins=_cors_origins,
         allow_credentials=False,
-        allow_methods=["GET", "DELETE", "PUT", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "X-API-Key"],
     )
 
+app.include_router(auth_router)
 app.include_router(router)
 app.include_router(limits_router)
 app.include_router(profiles_router)
@@ -109,9 +111,12 @@ async def warmup():
             media_type="application/json",
             headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
         )
-    except Exception as e:
+    except Exception:
+        # never echo the exception: pymongo puts the Atlas hostnames (and this
+        # endpoint needs no API key) straight into its error messages.
+        logging.exception("warmup failed")
         return Response(
-            content=f'{{"status":"warming","ready":false,"error":"{str(e)}"}}',
+            content='{"status":"warming","ready":false}',
             media_type="application/json",
             headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
         )

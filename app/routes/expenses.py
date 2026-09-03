@@ -1,46 +1,39 @@
 import json
 import logging
 import re
-from datetime import datetime
-from secrets import compare_digest
+from datetime import datetime, time, timedelta
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
 from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import PyMongoError
 
-from ..config import all_users, settings
+from ..config import settings
 from ..database import get_collection
 from ..models.expense import ExpenseCreated, ExpenseIn, ensure_utc, utcnow
+from .auth import resolve_user
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["expenses"])
 
 
-def resolve_user(
-    x_api_key: str = Header(default="", alias="X-API-Key"),
-    # browsers can't set headers on a plain link, so the view passes ?key=
-    key: str = Query(default=""),
-) -> str:
-    """Any valid key authenticates; returns the display name it belongs to."""
-    supplied = x_api_key if x_api_key else key
-    if supplied:
-        for api_key, name in all_users().items():
-            if compare_digest(supplied, api_key):
-                return name
-    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key")
-
-
-# keep the old name working as a plain gate where the user isn't needed
-require_api_key = resolve_user
+# resolve_user lives in auth.py (it also has to check accounts and sessions);
+# re-exported here because every other router imports it from this module.
+__all__ = ["router", "resolve_user", "require_api_key", "user_scope"]
+require_api_key = resolve_user  # plain gate, where the user isn't needed
 
 
 def user_scope(user: str) -> dict:
     """Every query is locked to one person's documents. Legacy docs created
-    before multi-user existed belong to the default user."""
+    before multi-user existed belong to the default user.
+
+    Deliberately a single `user` key rather than $or: the text search also
+    builds an $or, and when both lived on the same query the search silently
+    replaced the ownership clause and returned everyone's expenses."""
     if user == settings.default_user:
-        return {"$or": [{"user": user}, {"user": None}, {"user": {"$exists": False}}]}
+        # null matches docs where `user` is null *and* docs with no `user` field
+        return {"user": {"$in": [user, None]}}
     return {"user": user}
 
 
@@ -113,6 +106,9 @@ async def list_expenses(
         if date_from is not None:
             rng["$gte"] = date_from
         if date_to is not None:
+            # a bare `to=2026-08-31` means "through the end of that day"
+            if date_to.time() == time.min:
+                date_to += timedelta(days=1, microseconds=-1)
             rng["$lte"] = date_to
         query["date"] = rng
     try:
