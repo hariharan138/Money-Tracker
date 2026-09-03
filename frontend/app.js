@@ -1053,7 +1053,9 @@ function endNavDrag(event) {
   if (!dragging) return;
   suppressTabClick = true;
   const index = NAV_TABS.indexOf(activeTabName());
-  const delta = dx > SWIPE_THRESHOLD ? 1 : (dx < -SWIPE_THRESHOLD ? -1 : 0);
+  // Dragging right reveals what sits to the left, so it goes to the previous
+  // tab — the bar was animating one way and navigating the other.
+  const delta = dx > SWIPE_THRESHOLD ? -1 : (dx < -SWIPE_THRESHOLD ? 1 : 0);
   const next = index + delta;
   if (delta !== 0 && next >= 0 && next < NAV_TABS.length) showTab(NAV_TABS[next]);
   setTimeout(() => { suppressTabClick = false; }, 50);
