@@ -1143,3 +1143,34 @@ render();
 syncProfileKeyUi();
 if (!KEY) showTab('profile');
 load();
+
+// Auto-refresh so expenses added elsewhere (e.g. the Shortcut) show up
+// without a manual reload tap. Paused while the tab is hidden, and backs off
+// on repeated failures (15s -> 30s -> 60s) so a sleeping/dead API isn't
+// polled at full speed forever; resets to 15s on the next success.
+const POLL_BASE_MS = 15_000;
+const POLL_MAX_MS = 60_000;
+let pollDelay = POLL_BASE_MS;
+let pollTimer = null;
+
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(pollTick, pollDelay);
+}
+
+async function pollTick() {
+  if (document.visibilityState === 'visible') {
+    const ok = await load({ quiet: true });
+    pollDelay = ok ? POLL_BASE_MS : Math.min(pollDelay * 2, POLL_MAX_MS);
+  }
+  schedulePoll();
+}
+
+schedulePoll();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  pollDelay = POLL_BASE_MS; // give it a fresh shot the moment you come back
+  load({ quiet: true });
+  schedulePoll();
+});
