@@ -89,6 +89,12 @@ function escapeHtml(value) {
   return node.innerHTML.replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
 
+/** kind: 'ok' (green dot, default), 'muted' (gray, transitional), 'err' (red). */
+function setStatus(text, kind = 'ok') {
+  $('#statusText').textContent = text;
+  $('#status').className = `sync-status ${kind}`;
+}
+
 function range() {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -302,6 +308,37 @@ function todaySpend() {
   return spendInSpan(new Date(now.getFullYear(), now.getMonth(), now.getDate()), now);
 }
 
+/** Full spend on the previous calendar day (local). */
+function yesterdaySpend() {
+  const now = new Date();
+  const day = now.getDate() - 1;
+  return spendInSpan(
+    new Date(now.getFullYear(), now.getMonth(), day),
+    new Date(now.getFullYear(), now.getMonth(), day, 23, 59, 59, 999),
+  );
+}
+
+/** Full spend in the previous calendar month (local). */
+function lastMonthSpend() {
+  const now = new Date();
+  return spendInSpan(
+    new Date(now.getFullYear(), now.getMonth() - 1, 1),
+    new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999),
+  );
+}
+
+/** "↑ 12% from last month" style delta line, colored by direction. */
+function deltaLine(curr, prev, suffix) {
+  if (prev <= 0) {
+    return curr > 0
+      ? `<span class="delta up">↑ New vs ${suffix}</span>`
+      : `<span class="delta flat">— 0% ${suffix}</span>`;
+  }
+  const pct = Math.round(((curr - prev) / prev) * 100);
+  if (pct === 0) return `<span class="delta flat">— 0% ${suffix}</span>`;
+  return `<span class="delta ${pct > 0 ? 'up' : 'down'}">${pct > 0 ? '↑' : '↓'} ${Math.abs(pct)}% ${suffix}</span>`;
+}
+
 /** Spend so far this calendar week starting Monday. */
 function weekSpend() {
   const now = new Date();
@@ -328,17 +365,31 @@ function budgetAlert(monthSpent) {
   return null;
 }
 
-function budgetBar(label, spent, target, color) {
+const BUDGET_ROW_ICONS = {
+  green: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/></svg>',
+  orange: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  violet: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19V11M12 19V5M19 19v-7"/></svg>',
+};
+const BUDGET_ROW_COLOR = { green: 'var(--green)', orange: 'var(--orange)', violet: 'var(--violet)' };
+const BUDGET_ROW_TEXT = { green: 'var(--green)', orange: '#f59e0b', violet: 'var(--violet)' };
+
+function budgetRow(label, spent, target, key) {
   const pct = target > 0 ? Math.min(100, (spent / target) * 100) : 0;
   const over = target > 0 && spent > target;
+  const remText = target > 0 ? (over ? `${INR.format(spent - target)} over` : `${INR.format(target - spent)} left`) : '';
+  const remColor = over ? 'var(--danger)' : BUDGET_ROW_TEXT[key];
   return `
-    <div class="budget-bar">
-      <div class="budget-bar-top">
-        <span>${label}</span>
-        <span class="budget-bar-val ${over ? 'over' : ''}">${INR.format(spent)} <small>/ ${INR.format(target)}</small></span>
+    <div class="budget-row">
+      <div class="budget-row-icon ${key}">${BUDGET_ROW_ICONS[key]}</div>
+      <div class="budget-row-main">
+        <span class="budget-row-label">${label}</span>
+        <div class="budget-track ${over ? 'over' : ''}"><i style="width:${pct}%;${over ? '' : `background:${BUDGET_ROW_COLOR[key]}`}"></i></div>
       </div>
-      <div class="budget-track ${over ? 'over' : ''}"><i style="width:${pct}%;${color ? `background:${color}` : ''}"></i></div>
-      <div class="budget-bar-rem">${target > 0 ? (spent > target ? `${INR.format(spent - target)} over` : `${INR.format(target - spent)} left`) : ''}</div>
+      <div class="budget-row-right">
+        <span class="budget-row-amt">${INR.format(spent)} <small>/ ${INR.format(target)}</small></span>
+        <span class="budget-row-rem" style="color:${remColor}">${remText}</span>
+      </div>
+      <svg class="budget-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
     </div>`;
 }
 
@@ -372,12 +423,17 @@ function renderBudget() {
     alertEl.className = 'budget-alert';
   }
 
-  $('#budgetBars').innerHTML =
-    budgetBar('This month', spent.month, monthlyLimit, 'var(--orange)') +
-    budgetBar('This week', spent.week, weekTarget) +
-    budgetBar('Today', spent.today, dayTarget, 'var(--green)');
+  const remaining = Math.max(0, monthlyLimit - spent.month);
+  const usedPct = monthlyLimit > 0 ? Math.min(100, (spent.month / monthlyLimit) * 100) : 0;
+  $('#budgetRemaining').textContent = INR.format(remaining);
+  $('#budgetSpentFrac').textContent = `${INR.format(spent.month)} / ${INR.format(monthlyLimit)}`;
+  $('#budgetSpentBar').style.width = `${usedPct}%`;
+  $('#budgetSpentPct').textContent = `${Math.round(usedPct)}% used`;
 
-  $('#budgetSummary').textContent = `${INR.format(monthlyLimit)} limit · ${INR.format(Math.max(0, monthlyLimit - spent.month))} remaining this month`;
+  $('#budgetBars').innerHTML =
+    budgetRow('This week', spent.week, weekTarget, 'green') +
+    budgetRow('Today', spent.today, dayTarget, 'orange') +
+    budgetRow('This month', spent.month, monthlyLimit, 'violet');
 }
 
 function openLimitModal() {
@@ -428,7 +484,7 @@ async function saveLimit() {
     monthlyLimit = value;
     closeLimitModal();
     render();
-    $('#status').textContent = 'Monthly limit saved';
+    setStatus('Monthly limit saved');
   } catch (error) {
     console.error(error);
     alert('Could not save your limit. Try again.');
@@ -448,7 +504,7 @@ async function removeLimitLocal() {
     monthlyLimit = null;
     closeLimitModal();
     render();
-    $('#status').textContent = 'Monthly limit removed';
+    setStatus('Monthly limit removed');
   } catch (error) {
     console.error(error);
     alert('Could not remove your limit. Try again.');
@@ -525,7 +581,7 @@ async function saveAvatar(file) {
     if (!response.ok) throw new Error('Could not save photo');
     avatarData = avatar;
     render();
-    $('#status').textContent = 'Profile photo saved';
+    setStatus('Profile photo saved');
   } catch (error) {
     console.error(error);
     alert('Could not save your photo. Try again.');
@@ -543,7 +599,7 @@ async function removeAvatarPhoto() {
     if (!response.ok) throw new Error('Could not remove photo');
     avatarData = null;
     render();
-    $('#status').textContent = 'Profile photo removed';
+    setStatus('Profile photo removed');
   } catch (error) {
     console.error(error);
     alert('Could not remove your photo. Try again.');
@@ -759,9 +815,10 @@ function render() {
   $('#greeting').textContent = greetingForNow();
   $('#total').textContent = INR.format(allTotal);
   $('#total-sub').textContent = `${expenses.length} transaction${expenses.length === 1 ? '' : 's'}`;
+  $('#heroDate').textContent = new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
   $('#stats').innerHTML = `
-    <div class="stat"><span class="stat-icon">↗</span><div><small>Today</small><strong>${INR.format(today)}</strong></div></div>
-    <div class="stat"><span class="stat-icon">↘</span><div><small>Selected</small><strong>${INR.format(total)}</strong></div></div>`;
+    <div class="stat"><span class="stat-icon">↗</span><div><small>Today</small><strong>${INR.format(today)}</strong>${deltaLine(today, yesterdaySpend(), 'from yesterday')}</div></div>
+    <div class="stat"><span class="stat-icon">↘</span><div><small>Selected</small><strong>${INR.format(total)}</strong>${deltaLine(monthSpend(), lastMonthSpend(), 'from last month')}</div></div>`;
 
   $('#recentPreview').innerHTML = items.length
     ? items.slice(0, 3).map(item => row(item, true)).join('')
@@ -825,12 +882,12 @@ function updateAddPreview() {
 async function load({ quiet = false } = {}) {
   const reloadBtn = $('#reloadBtn');
   if (!hasApiConfiguration()) {
-    $('#status').textContent = 'Set PRIMARY_API_URL and SECONDARY_API_URL in frontend/.env.local';
+    setStatus('Set PRIMARY_API_URL and SECONDARY_API_URL in frontend/.env.local', 'err');
     syncProfileKeyUi('Backend URLs are not configured', 'err');
     return false;
   }
   if (!KEY) {
-    $('#status').textContent = 'Open Profile to log in';
+    setStatus('Open Profile to log in', 'muted');
     expenses = [];
     render();
     syncProfileKeyUi('Paste your API key, then tap Save & load data');
@@ -838,7 +895,7 @@ async function load({ quiet = false } = {}) {
     return false;
   }
   if (!quiet) {
-    $('#status').textContent = 'Loading expenses…';
+    setStatus('Loading expenses…', 'muted');
     reloadBtn?.classList.add('is-loading');
   }
   try {
@@ -847,7 +904,7 @@ async function load({ quiet = false } = {}) {
     if (!response.ok) throw new Error(`API returned ${response.status}`);
     expenses = (await response.json()).expenses || [];
     render();
-    $('#status').textContent = 'Updated just now';
+    setStatus('Updated just now');
     syncProfileKeyUi(`Connected · ${maskKey(KEY)}`, 'ok');
     loadMe();
     loadLimit();
@@ -858,7 +915,7 @@ async function load({ quiet = false } = {}) {
     const message = error.message === 'Failed to fetch'
       ? 'Could not reach API — check its URL and CORS_ORIGINS'
       : error.message;
-    if (!quiet) $('#status').textContent = message;
+    if (!quiet) setStatus(message, 'err');
     syncProfileKeyUi(message, 'err');
     return false;
   } finally {
@@ -889,7 +946,7 @@ function clearApiKey() {
   writeStoredApiKey('');
   $('#apiKeyInput').value = '';
   render();
-  $('#status').textContent = 'Open Profile and paste your API key';
+  setStatus('Open Profile and paste your API key', 'muted');
   syncProfileKeyUi('API key cleared from this device');
 }
 
@@ -947,7 +1004,7 @@ async function saveExpense(event) {
   error.textContent = '';
   render();
   showTab('transactions');
-  $('#status').textContent = 'Saving…';
+  setStatus('Saving…', 'muted');
   saveButton.disabled = true;
   saveButton.textContent = 'Saving…';
 
@@ -966,14 +1023,14 @@ async function saveExpense(event) {
       expenses = expenses.map(item => (item.id === tempId ? { ...item, id: created.expense_id } : item));
       render();
     }
-    $('#status').textContent = 'Expense saved';
+    setStatus('Expense saved');
     load({ quiet: true }).catch(() => {});
   } catch (err) {
     expenses = expenses.filter(item => item.id !== tempId);
     render();
     showTab('add');
     error.textContent = err.message || 'Could not save this expense.';
-    $('#status').textContent = 'Save failed — try again';
+    setStatus('Save failed — try again', 'err');
   } finally {
     saveButton.disabled = false;
     saveButton.textContent = 'Save expense';
