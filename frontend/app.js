@@ -3,7 +3,9 @@
 import './styles.css';
 import { apiFetch, hasApiConfiguration } from './api.js';
 
-if ('serviceWorker' in navigator) {
+// Skipped inside the Android/iOS shell: the app shell already ships in the
+// APK, and a cached copy would survive app updates and serve the old UI.
+if ('serviceWorker' in navigator && !window.Capacitor) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(error => console.warn('Service worker registration failed', error));
   });
@@ -151,11 +153,14 @@ function groupByDate(items) {
 function row(item, compact = false) {
   const icon = icons[(item.category || '').trim().toLowerCase()] || '🏷️';
   const time = dateOf(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Expenses logged from the app carry no description; skip the line rather
+  // than repeating "Expense" under the category.
+  const desc = (item.description || item.notes || '').trim();
   return `<article class="tx${compact ? ' compact' : ''}">
     <div class="icon">${icon}</div>
     <div class="main">
       <div class="name">${escapeHtml(item.category || 'Expense')}</div>
-      <div class="desc">${escapeHtml(item.description || item.notes || 'Expense')}</div>
+      ${desc ? `<div class="desc">${escapeHtml(desc)}</div>` : ''}
       <div class="meta">${escapeHtml(time)}${item.payment_method ? ` · ${escapeHtml(item.payment_method)}` : ''}</div>
     </div>
     <div class="amount">-${INR.format(item.amount)}</div>
@@ -844,7 +849,7 @@ function render() {
         <span>${icons[(item.category || '').trim().toLowerCase()] || '🏷️'}</span>
         <div>
           <strong>${escapeHtml(item.category || 'Expense')}</strong>
-          <small>${escapeHtml(item.description || 'Expense')}</small>
+          <small>${escapeHtml(item.description || item.payment_method || '')}</small>
         </div>
         <b>-${INR.format(item.amount)}</b>
       </div>`).join('') || '<div class="empty">No spending data yet.</div>';
@@ -966,13 +971,12 @@ async function remove(id) {
 async function saveExpense(event) {
   event.preventDefault();
   const amount = Number($('#expenseAmount').value);
-  const description = $('#expenseDescription').value.trim();
   const category = ($('#expenseCategory').value.trim() || 'Expense');
   const paymentMethod = $('#expensePayment').value;
   const error = $('#formError');
 
-  if (!amount || !description) {
-    error.textContent = 'Enter an amount and description.';
+  if (!amount) {
+    error.textContent = 'Enter an amount.';
     return;
   }
   if (!KEY) {
@@ -988,7 +992,7 @@ async function saveExpense(event) {
     id: tempId,
     amount,
     category,
-    description,
+    description: null,
     payment_method: paymentMethod,
     notes: null,
     date: nowIso,
@@ -1012,7 +1016,7 @@ async function saveExpense(event) {
     const response = await apiFetch('/api/expenses', authed({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, category, description, payment_method: paymentMethod }),
+      body: JSON.stringify({ amount, category, payment_method: paymentMethod }),
     }));
     if (!response.ok) {
       const detail = await response.text().catch(() => '');

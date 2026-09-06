@@ -10,13 +10,18 @@
   --danger: #ef4444;
   --shadow: 0 10px 28px rgba(28, 33, 40, 0.07);
   --nav-h: 72px;
-  --safe-b: env(safe-area-inset-bottom, 0px);
+  /* Capacitor injects --safe-area-inset-* in the native shell (Android draws
+     edge-to-edge behind the status bar); env() covers the browser / iOS PWA. */
+  --safe-t: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-b: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
 * { box-sizing: border-box; }
 
 html {
-  background: #2f3640;
+  /* Paper by default so a phone (and the native shell, before the web view
+     paints) never flashes dark; the desktop frame colour is set at 700px. */
+  background: var(--paper);
   touch-action: manipulation;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -40,7 +45,7 @@ body {
   width: min(100%, 430px);
   min-height: 100dvh;
   margin: 0 auto;
-  padding: 28px 22px calc(var(--nav-h) + 36px + var(--safe-b));
+  padding: calc(28px + var(--safe-t)) 22px calc(var(--nav-h) + 36px + var(--safe-b));
   background: var(--paper);
 }
 
@@ -181,9 +186,8 @@ h1 {
 }
 
 .round.light {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  box-shadow: none;
+  background: var(--card);
+  color: var(--ink);
 }
 
 /* —— Hero card —— */
@@ -579,29 +583,13 @@ h1 {
   padding: 0 12px;
   transform: translateX(-50%);
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.38) 55%, rgba(255, 255, 255, 0.16) 100%);
-  -webkit-backdrop-filter: blur(24px) saturate(190%);
-  backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid #eceef1;
+  background: var(--card);
   box-shadow:
-    0 16px 36px rgba(20, 24, 30, 0.16),
-    0 4px 12px rgba(20, 24, 30, 0.09),
-    inset 0 1px 0 rgba(255, 255, 255, 0.75),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.22);
+    0 12px 30px rgba(20, 24, 30, 0.12),
+    0 3px 10px rgba(20, 24, 30, 0.06);
   transition: transform .5s cubic-bezier(0.34, 1.56, 0.64, 1);
   touch-action: pan-y;
-}
-
-/* Soft sheen sweeping across the glass */
-.bottom-nav::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background: linear-gradient(115deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 34%, rgba(255, 255, 255, 0) 66%, rgba(255, 255, 255, 0.18) 100%);
-  pointer-events: none;
 }
 
 .nav-item {
@@ -628,6 +616,10 @@ h1 {
   font-weight: 650;
   letter-spacing: -0.1px;
 }
+
+/* The add form is full-screen with its own back arrow; keeping the floating
+   nav would park it on top of the Save button once the keyboard opens. */
+body.on-add .bottom-nav { display: none; }
 
 .nav-item.nav-active {
   color: var(--violet);
@@ -788,15 +780,6 @@ h1 {
 .top-item b { font-size: 13px; font-weight: 750; }
 
 /* —— Add panel (dark, matches invoice screen) —— */
-body.on-add,
-body.on-add .app {
-  background: #12161c;
-}
-
-.add-panel {
-  color: #fff;
-}
-
 .add-head {
   display: flex;
   align-items: center;
@@ -815,7 +798,7 @@ body.on-add .app {
 
 .add-meta {
   margin-bottom: 22px;
-  color: #8b9098;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 500;
   text-align: center;
@@ -824,14 +807,14 @@ body.on-add .app {
 .add-form {
   padding: 22px 18px 20px;
   border-radius: 24px;
-  background: #1a1f27;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+  background: var(--card);
+  box-shadow: var(--shadow);
 }
 
 .add-form label {
   display: block;
   margin-top: 14px;
-  color: #9aa0a8;
+  color: #5b6068;
   font-size: 12px;
   font-weight: 650;
 }
@@ -843,21 +826,22 @@ body.on-add .app {
   width: 100%;
   height: 48px;
   margin-top: 8px;
-  border: 1px solid #2a3038;
+  border: 1px solid #e3e5e9;
   border-radius: 14px;
   padding: 0 14px;
-  background: #12161c;
-  color: #fff;
+  background: #fafbfc;
+  color: var(--ink);
   outline: none;
   font-size: 16px;
 }
 
 .add-form input:focus,
 .add-form select:focus {
-  border-color: #4b5563;
+  border-color: var(--violet);
+  background: #fff;
 }
 
-.add-form input::placeholder { color: #5c636d; }
+.add-form input::placeholder { color: #b3b7bd; }
 
 .add-summary {
   display: grid;
@@ -865,7 +849,7 @@ body.on-add .app {
   margin-top: 20px;
   padding: 16px;
   border-radius: 16px;
-  background: #12161c;
+  background: #f4f5f7;
 }
 
 .add-summary div {
@@ -875,7 +859,7 @@ body.on-add .app {
 }
 
 .add-summary span {
-  color: #8b9098;
+  color: var(--muted);
   font-size: 12px;
 }
 
@@ -887,7 +871,7 @@ body.on-add .app {
 .form-error {
   min-height: 16px;
   margin-top: 12px;
-  color: #f87171;
+  color: var(--danger);
   font-size: 12px;
 }
 
@@ -902,6 +886,13 @@ body.on-add .app {
   color: #12161c;
   font-weight: 800;
   font-size: 15px;
+}
+
+/* Primary action, in the theme accent */
+.save-expense {
+  background: linear-gradient(150deg, #8f7ef8, #6d59ea);
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(109, 89, 234, 0.32);
 }
 
 .save-expense:disabled { opacity: 0.55; }
@@ -1080,6 +1071,8 @@ body.on-add .app {
 }
 
 @media (min-width: 700px) {
+  html { background: #2f3640; }
+
   body {
     padding: 28px 0;
     background: #2f3640;

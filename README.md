@@ -22,7 +22,10 @@ frontend/              # standalone static dashboard, deploy independently
 ├── api.js              # centralized primary/secondary API failover
 ├── styles.css
 ├── package.json
-└── .env.example         # backend URL configuration
+├── .env.example         # backend URL configuration
+├── capacitor.config.json # Android shell config
+├── resources/icon.png   # source image for launcher icons
+└── android/             # generated Capacitor project (see "Android app")
 ```
 
 ## Deploy the frontend separately
@@ -53,6 +56,42 @@ secret in the URL. Treat one-time `/?key=…` links as private.
 **iPhone Home Screen:** open the site once with your key (or save it in
 Profile), then Share → Add to Home Screen. Do **not** rely on `?key=` in the
 Home Screen URL — the saved key in localStorage is what loads your data.
+
+## Android app
+
+`frontend/` doubles as a native Android app via Capacitor — the same HTML/CSS/JS
+in a WebView shell, no second codebase.
+
+```bash
+cd frontend
+npm install
+npm run build                                  # bakes .env.local into dist/
+npx cap sync android
+cd android && ./gradlew assembleDebug          # → app/build/outputs/apk/debug/app-debug.apk
+```
+
+Install with `adb install -r app-debug.apk`, or copy the APK to the phone and
+tap it (needs "install unknown apps" for whatever opens it).
+
+Two things that will bite:
+
+- **JDK 21+ is required.** Capacitor 8 compiles at source level 21, so a system
+  JDK 17 dies with `invalid source release: 21`. Android Studio bundles one:
+  `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`
+- **CORS.** The app is served from `https://localhost` inside the WebView, so
+  that origin must be in `CORS_ORIGINS` on **both** API deployments, next to the
+  web frontend's URL. Without it every request fails and the app looks offline.
+
+The API URL is compiled in at build time, not read at runtime: after changing
+`frontend/.env.local` you must `npm run build && npx cap sync android` and
+rebuild the APK.
+
+Launcher icons and splash screens are generated from `frontend/resources/icon.png`
+with `npx capacitor-assets generate --android`.
+
+For the Play Store, create your own keystore
+(`keytool -genkey -v -keystore expenses.keystore -alias expenses -keyalg RSA -validity 10000`),
+add a `signingConfigs` block to `android/app/build.gradle`, then `./gradlew bundleRelease`.
 
 ## API
 

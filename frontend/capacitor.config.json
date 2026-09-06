@@ -1,0 +1,8 @@
+{
+  "appId": "com.hari.expenses",
+  "appName": "Expenses",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#f5f5f7"
+  }
+}
