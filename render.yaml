@@ -1,0 +1,71 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec).
+#
+# Commit this, then in the Render dashboard: New -> Blueprint -> pick this
+# repo. Render reads the file and creates/updates the services below. Values
+# marked `sync: false` are prompted for once and never stored in git.
+#
+# Keeping a free instance awake takes two layers, because neither is enough
+# on its own:
+#   1. KEEPALIVE_ENABLED below — the app pings its own public URL every
+#      KEEPALIVE_INTERVAL_MINUTES. Holds an awake instance awake. Cannot wake
+#      a stopped one, because a stopped process pings nothing.
+#   2. An external pinger on `*/4 * * * *`. Wakes a stopped instance. Either
+#      the `type: cron` service at the bottom (paid plans), or a free
+#      cronjob.org job — see KEEP_AWAKE_GUIDE.md.
+
+services:
+  - type: web
+    name: expenses-api
+    runtime: python
+    plan: free
+    region: oregon          # keep this near your MongoDB Atlas region
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    # Render probes this on deploy; it needs no database and no API key.
+    healthCheckPath: /health
+    envVars:
+      # ---- secrets: entered in the Render dashboard, never committed ----
+      - key: MONGODB_URI
+        sync: false
+      - key: SHORTCUT_API_KEY
+        sync: false
+      # ---- keep-alive ----
+      - key: KEEPALIVE_ENABLED
+        value: "true"
+      # KEEPALIVE_URL is deliberately absent: Render injects
+      # RENDER_EXTERNAL_URL and app/keepalive.py falls back to it, so this
+      # works unchanged on a renamed service or a second instance. Set
+      # KEEPALIVE_URL only for a custom domain.
+      - key: KEEPALIVE_INTERVAL_MINUTES
+        value: "10"
+      - key: KEEPALIVE_PATH
+        value: /ping
+      - key: ENABLE_CRONJOB_PING
+        value: "true"
+      - key: CRONJOB_PING_INTERVAL_MINUTES
+        value: "4"
+      # ---- app ----
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.11"
+      # The dashboard's origin, if it is deployed separately.
+      # - key: CORS_ORIGINS
+      #   value: https://expenses.example.com
+
+  # Render Cron Jobs need a paid plan (there is no free `type: cron`). On the
+  # free tier use cronjob.org instead — same request, same schedule, £0.
+  # Uncomment to run the external pinger on Render itself.
+  #
+  # - type: cron
+  #   name: expenses-api-keepalive
+  #   runtime: python
+  #   plan: starter
+  #   region: oregon
+  #   schedule: "*/4 * * * *"
+  #   buildCommand: ""          # nothing to build; curl ships in the image
+  #   startCommand: curl -fsS --max-time 120 "$KEEPALIVE_TARGET"
+  #   envVars:
+  #     - key: KEEPALIVE_TARGET
+  #       value: https://expenses-api.onrender.com/ping

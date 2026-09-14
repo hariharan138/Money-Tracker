@@ -18,6 +18,16 @@ class Settings(BaseSettings):
     frontend_poll_interval_ms: int = 300000  # 5 minutes - aggressive polling to prevent sleep (changed from 2 minutes)
     enable_cronjob_ping: bool = True  # Enable /ping endpoint for cronjob.org wake-ups
     cronjob_ping_interval_minutes: int = 4  # cronjob.org should ping every 4 minutes
+
+    # In-process keep-alive: the app pings its own public URL so Render's
+    # free tier never sees 15 idle minutes. Off by default — it only makes
+    # sense on a deployed instance, never on a laptop or in tests.
+    keepalive_enabled: bool = False
+    # Blank on Render: RENDER_EXTERNAL_URL is injected and used instead.
+    keepalive_url: str = ""
+    keepalive_path: str = "/ping"
+    # Must stay under Render's 15-minute spin-down; clamped to 1-14.
+    keepalive_interval_minutes: float = 10.0
     # Comma-separated browser origins allowed to call this API. Set this to
     # the URL(s) where the standalone dashboard is deployed.
     cors_origins: str = ""

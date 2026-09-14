@@ -528,3 +528,203 @@ def test_account_expenses_are_scoped_to_the_account():
     assert inserted[0]["user"] == "alice"
     client.delete("/api/expenses/66c800000000000000000000",
                   headers={"X-API-Key": token})
+
+
+# ---------------------------------------------------------------- keep-alive
+# The keep-alive task itself never starts here: `client` is built without a
+# `with` block, so the lifespan (and keepalive.start()) is skipped entirely.
+
+
+def test_ping_reports_keepalive_state():
+    r = client.get("/ping")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "awake" and body["timestamp"]
+    assert body["recommended_external_interval_minutes"] == settings.cronjob_ping_interval_minutes
+    # disabled by default, and no lifespan ran, so nothing is running
+    assert body["keepalive"] == {
+        "enabled": False, "running": False, "url": None, "interval_minutes": None,
+        "pings_ok": 0, "pings_failed": 0, "last_status": None, "last_error": None,
+    }
+
+
+def test_ping_can_be_switched_off():
+    orig = settings.enable_cronjob_ping
+    settings.enable_cronjob_ping = False
+    try:
+        assert client.get("/ping").status_code == 404
+    finally:
+        settings.enable_cronjob_ping = orig
+    assert client.get("/ping").status_code == 200
+
+
+def test_ping_needs_no_key_and_is_never_cached():
+    """An external cron cannot hold a secret, and a cached 200 would keep
+    answering while the instance slept."""
+    r = client.get("/ping")
+    assert r.status_code == 200  # no X-API-Key sent
+    assert "no-store" in r.headers["cache-control"]
+    assert "no-store" in client.get("/health").headers["cache-control"]
+
+
+def test_keepalive_url_falls_back_to_render_and_normalises():
+    from app import keepalive as ka
+
+    orig_url, orig_path = settings.keepalive_url, settings.keepalive_path
+    orig_env = os.environ.get(ka.RENDER_URL_ENV)
+    try:
+        # nothing configured anywhere -> nothing to ping
+        settings.keepalive_url = ""
+        os.environ.pop(ka.RENDER_URL_ENV, None)
+        assert ka.target_url() == ""
+
+        # Render's injected URL is used when KEEPALIVE_URL is unset
+        os.environ[ka.RENDER_URL_ENV] = "https://expenses-api.onrender.com"
+        assert ka.target_url() == "https://expenses-api.onrender.com/ping"
+
+        # an explicit URL wins, a trailing slash does not double up, and a
+        # bare host gets https://
+        settings.keepalive_url = "https://custom.example.com/"
+        assert ka.target_url() == "https://custom.example.com/ping"
+        settings.keepalive_url = "bare-host.example.com"
+        assert ka.target_url() == "https://bare-host.example.com/ping"
+
+        settings.keepalive_path = "health"  # missing leading slash
+        assert ka.target_url() == "https://bare-host.example.com/health"
+        settings.keepalive_path = "   "  # blank falls back to /ping
+        assert ka.target_url() == "https://bare-host.example.com/ping"
+    finally:
+        settings.keepalive_url, settings.keepalive_path = orig_url, orig_path
+        os.environ.pop(ka.RENDER_URL_ENV, None)
+        if orig_env is not None:
+            os.environ[ka.RENDER_URL_ENV] = orig_env
+
+
+def test_keepalive_interval_is_clamped_below_render_sleep():
+    """15 minutes is when Render sleeps, so the interval must stay under it —
+    a misconfigured 30 must not silently mean 'never'."""
+    from app import keepalive as ka
+
+    orig = settings.keepalive_interval_minutes
+    try:
+        for wanted, expected_minutes in ((10, 10), (30, 14), (0, 1), (-5, 1), (14, 14)):
+            settings.keepalive_interval_minutes = wanted
+            assert ka.interval_seconds() == expected_minutes * 60, wanted
+    finally:
+        settings.keepalive_interval_minutes = orig
+
+
+class FakePinger:
+    """Stands in for httpx.AsyncClient.get."""
+
+    def __init__(self, *outcomes):
+        self.outcomes = list(outcomes)
+        self.urls: list[str] = []
+
+    async def get(self, url, headers=None):
+        self.urls.append(url)
+        outcome = self.outcomes.pop(0) if self.outcomes else 200
+        if isinstance(outcome, Exception):
+            raise outcome
+        return type("R", (), {"status_code": outcome, "is_success": 200 <= outcome < 300})()
+
+
+def test_keepalive_counts_outcomes_and_never_raises():
+    """A keep-alive that can take the process down is worse than a sleeping
+    instance, so every failure has to stay inside ping_once."""
+    import asyncio
+
+    from app.keepalive import KeepAlive
+
+    ka = KeepAlive()
+    ka.url = "https://expenses-api.onrender.com/ping"
+    pinger = FakePinger(200, 500, ConnectionError("dns"), 200)
+
+    assert asyncio.run(ka.ping_once(pinger)) is True
+    assert (ka.pings_ok, ka.pings_failed, ka.last_status, ka.last_error) == (1, 0, 200, None)
+
+    # a 5xx still reached Render's router, so it still counted as traffic
+    assert asyncio.run(ka.ping_once(pinger)) is False
+    assert (ka.pings_ok, ka.pings_failed, ka.last_status, ka.last_error) == (1, 1, 500, "HTTP 500")
+
+    # a transport failure is recorded by type, not by message
+    assert asyncio.run(ka.ping_once(pinger)) is False
+    assert (ka.pings_ok, ka.pings_failed, ka.last_status, ka.last_error) == (1, 2, None, "ConnectionError")
+
+    # and it recovers
+    assert asyncio.run(ka.ping_once(pinger)) is True
+    assert (ka.pings_ok, ka.pings_failed, ka.last_error) == (2, 2, None)
+    assert pinger.urls == [ka.url] * 4
+
+
+def test_keepalive_does_not_start_when_disabled_or_unconfigured():
+    from app import keepalive as ka
+
+    orig_enabled, orig_url = settings.keepalive_enabled, settings.keepalive_url
+    orig_env = os.environ.pop(ka.RENDER_URL_ENV, None)
+    try:
+        instance = ka.KeepAlive()
+
+        settings.keepalive_enabled = False
+        instance.start()
+        assert not instance.running and instance.status()["enabled"] is False
+
+        # enabled but with no URL anywhere: warn and stay off rather than
+        # spin a task that can only ever fail
+        settings.keepalive_enabled = True
+        settings.keepalive_url = ""
+        instance.start()
+        assert not instance.running
+    finally:
+        settings.keepalive_enabled, settings.keepalive_url = orig_enabled, orig_url
+        if orig_env is not None:
+            os.environ[ka.RENDER_URL_ENV] = orig_env
+
+
+def test_keepalive_runs_and_stops_with_the_app_lifespan():
+    """The real lifespan path: the self-ping task starts on boot and is
+    cancelled on shutdown. Mongo is stubbed out; what is under test is the
+    wiring in app/main.py, not the network."""
+    import asyncio
+    import contextlib
+
+    from app import keepalive as ka
+    from app import main as app_main
+
+    orig_enabled, orig_url = settings.keepalive_enabled, settings.keepalive_url
+    orig_interval = settings.keepalive_interval_minutes
+    settings.keepalive_enabled = True
+    settings.keepalive_url = "https://expenses-api.onrender.com"
+    settings.keepalive_interval_minutes = 10
+
+    @contextlib.asynccontextmanager
+    async def fake_db_lifespan(_app):
+        yield  # no Mongo in this test
+
+    async def scenario():
+        orig_db = app_main.db_lifespan
+        app_main.db_lifespan = fake_db_lifespan
+        try:
+            async with app_main.lifespan(app_main.app):
+                assert ka.keepalive.running
+                assert ka.keepalive.url == "https://expenses-api.onrender.com/ping"
+                assert ka.keepalive.interval_s == 600
+                assert ka.keepalive.status()["interval_minutes"] == 10
+                # the loop is parked in its first sleep; prove the ping it will
+                # make works against the URL the wiring resolved
+                assert await ka.keepalive.ping_once(FakePinger(200)) is True
+            # lifespan exited -> the task is cancelled, not orphaned
+            assert not ka.keepalive.running
+        finally:
+            app_main.db_lifespan = orig_db
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        settings.keepalive_enabled = orig_enabled
+        settings.keepalive_url = orig_url
+        settings.keepalive_interval_minutes = orig_interval
+        ka.keepalive.pings_ok = ka.keepalive.pings_failed = 0
+        ka.keepalive.last_status = ka.keepalive.last_error = None
+        ka.keepalive.url = ""
+        ka.keepalive.interval_s = 0.0

@@ -1,4 +1,6 @@
+import json
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -8,7 +10,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from .database import lifespan
+from .database import lifespan as db_lifespan
+from .keepalive import keepalive
 from .routes.auth import router as auth_router
 from .routes.expenses import router
 from .routes.limits import router as limits_router
@@ -17,6 +20,20 @@ from .routes.view import router as view_router
 from .config import cors_origins, settings
 
 logging.basicConfig(level=logging.INFO)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Mongo first, then the self-pinger: there is no point holding an
+    instance awake that could not serve a request anyway. The keep-alive is
+    stopped on the way out so shutdown never races an in-flight ping."""
+    async with db_lifespan(app):
+        keepalive.start()
+        try:
+            yield
+        finally:
+            await keepalive.stop()
+
 
 # Log environment on startup
 if settings.environment == "production":
@@ -78,18 +95,31 @@ async def health():
 
 @app.get("/ping", tags=["meta"])
 async def ping():
-    """Lightweight keep-alive endpoint for cronjob.org to prevent Render.com sleep.
-    
-    CRONJOB.ORG SETUP:
-    - URL: https://your-app.onrender.com/ping
-    - Schedule: Every 4 minutes (cron: */4 * * * *)
-    - This keeps the server awake by pinging before the 15-minute timeout
-    
-    Only enabled in production via ENABLE_CRONJOB_PING setting."""
+    """Keep-alive endpoint. Hitting it is the whole point: any inbound request
+    resets Render's 15-minute idle timer, so this one is deliberately cheap —
+    no database, no disk, no auth.
+
+    Two callers are expected, and running both is the reliable setup:
+      - the in-process keep-alive (KEEPALIVE_ENABLED), which holds an awake
+        instance awake but cannot wake a stopped one;
+      - an external pinger (cronjob.org, a Render Cron Job, an uptime monitor)
+        on `*/<CRONJOB_PING_INTERVAL_MINUTES> * * * *`, which can.
+
+    The response reports the self-pinger's state so a deploy can be verified
+    with one curl. Disable the route with ENABLE_CRONJOB_PING=false.
+    """
     if not settings.enable_cronjob_ping:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ping endpoint disabled")
+    body = {
+        "status": "awake",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        # what an external cron should be set to, so the value is discoverable
+        # from the deployed service instead of only from the docs
+        "recommended_external_interval_minutes": settings.cronjob_ping_interval_minutes,
+        "keepalive": keepalive.status(),
+    }
     return Response(
-        content=f'{{"status":"awake","timestamp":"{datetime.now(timezone.utc).isoformat()}"}}',
+        content=json.dumps(body),
         media_type="application/json",
         headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
     )

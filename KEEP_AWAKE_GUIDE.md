@@ -2,26 +2,65 @@
 
 ## Current Setup (Free Tier)
 
-Your expense tracking app is configured with multiple layers of keep-alive mechanisms to prevent Render.com's 15-minute sleep timeout:
+Three layers keep the service ahead of Render's 15-minute sleep timeout. They
+are listed in order of how much you should rely on them.
 
-### 1. Frontend Polling Strategy
-- **Active Tab**: Polls every 5 minutes for expense updates
-- **Hidden Tab**: Lightweight `/ping` requests every 2 minutes
-- **Tab Visibility**: Immediate refresh when tab becomes visible
-- **Window Focus**: Instant refresh when window regains focus
+### 1. In-process self-ping (`app/keepalive.py`)
 
-### 2. cronjob.org External Wake-up
+The API pings its own public URL every `KEEPALIVE_INTERVAL_MINUTES` from one
+background task started in the FastAPI lifespan. The request leaves the
+container and re-enters through Render's router, so it counts as inbound
+traffic and holds the idle timer open.
+
+- **Holds an awake instance awake:** yes.
+- **Wakes a stopped instance:** **no** — a stopped process pings nothing.
+  This is why layer 2 is not optional.
+- Failures are caught and logged, never raised; the interval is clamped to
+  1–14 minutes and jittered to 85–100%.
+
+```bash
+KEEPALIVE_ENABLED=true            # default false
+KEEPALIVE_INTERVAL_MINUTES=10     # clamped to 1-14
+KEEPALIVE_PATH=/ping
+# KEEPALIVE_URL unset on Render: RENDER_EXTERNAL_URL is used automatically
+```
+
+Check it with `curl -s https://your-app.onrender.com/ping` — the `keepalive`
+block in the response reports `running`, `pings_ok`, `pings_failed` and
+`last_error`. Full walkthrough in the README's **Keeping the API awake**.
+
+### 2. cronjob.org External Wake-up (the only layer that can *wake* it)
+
 - **Endpoint**: `https://your-app.onrender.com/ping`
 - **Schedule**: Every 4 minutes (`*/4 * * * *`)
-- **Purpose**: External backup to wake server even when no users are active
-- **Response**: `{"status":"awake","timestamp":"..."}`
+- **Purpose**: wakes a stopped instance, which nothing inside the container can
+- **Response**: `{"status":"awake","timestamp":"...","keepalive":{...}}`
 
-### 3. Configuration
+On a paid plan, the commented `type: cron` service in `render.yaml` does the
+same job on Render itself.
+
+### 3. Frontend Polling
+
+The dashboard refreshes expenses while its tab is visible, which incidentally
+counts as traffic. It is a side effect, not a keep-alive: polling stops when
+the tab is hidden, backs off to 60s on repeated failures, and does nothing at
+all when nobody has the app open.
+
+- **`frontend/`** (the app you actually use): 15s base interval, exponential
+  backoff to 60s on failure, paused while the tab is hidden, immediate refresh
+  when it becomes visible again.
+- **`app/static/index.html`** (the legacy server-rendered dashboard): this is
+  the only consumer of `FRONTEND_POLL_INTERVAL_MS`, which `app/routes/view.py`
+  injects into the page at request time.
+
+### Configuration
 ```bash
 ENVIRONMENT=production
-FRONTEND_POLL_INTERVAL_MS=300000  # 5 minutes
-ENABLE_CRONJOB_PING=true
-CRONJOB_PING_INTERVAL_MINUTES=4  # Recommended cronjob.org interval
+KEEPALIVE_ENABLED=true            # layer 1
+KEEPALIVE_INTERVAL_MINUTES=10
+ENABLE_CRONJOB_PING=true          # layer 2's endpoint
+CRONJOB_PING_INTERVAL_MINUTES=4   # interval /ping advertises to callers
+FRONTEND_POLL_INTERVAL_MS=300000  # layer 3, legacy dashboard only
 ```
 
 ## Setting Up cronjob.org
@@ -113,6 +152,22 @@ Even with these optimizations, the free tier has limitations:
 
 ## Troubleshooting
 
+### Keep-alive Not Running
+
+`curl -s https://your-app.onrender.com/ping` and read the `keepalive` block:
+
+- `"enabled": false` — `KEEPALIVE_ENABLED` never reached the process. Check the
+  Render dashboard's Environment tab, then redeploy.
+- `"url": null` — neither `KEEPALIVE_URL` nor `RENDER_EXTERNAL_URL` was set.
+  Set `KEEPALIVE_URL` explicitly.
+- `"last_error": "HTTP 404"` — `KEEPALIVE_PATH` is wrong, or it points at
+  `/ping` while `ENABLE_CRONJOB_PING=false`.
+- `"running": false` with `enabled: true` — the boot log says why; look for
+  `keep-alive` lines in Render's logs.
+
+Remember that a self-ping cannot wake a stopped instance, so an instance that
+was asleep will show `pings_ok: 0` until something external wakes it.
+
 ### Server Still Sleeping
 1. Check cronjob.org execution logs
 2. Verify `/ping` endpoint is accessible
@@ -136,9 +191,13 @@ SHORTCUT_API_KEY=your_api_key
 
 # Keep-alive settings
 ENVIRONMENT=production
-FRONTEND_POLL_INTERVAL_MS=300000  # 5 minutes
+KEEPALIVE_ENABLED=true            # in-process self-ping (default false)
+KEEPALIVE_INTERVAL_MINUTES=10     # clamped to 1-14; Render sleeps at 15
+KEEPALIVE_PATH=/ping              # use /health if ENABLE_CRONJOB_PING=false
+# KEEPALIVE_URL=                  # unset on Render: RENDER_EXTERNAL_URL is used
 ENABLE_CRONJOB_PING=true
 CRONJOB_PING_INTERVAL_MINUTES=4  # cronjob.org setting
+FRONTEND_POLL_INTERVAL_MS=300000  # legacy dashboard only
 ```
 
 ## Conclusion

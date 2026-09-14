@@ -5,17 +5,19 @@ FastAPI + MongoDB Atlas endpoint for logging expenses from an iPhone Shortcut.
 ```
 main.py                # run this: `python main.py`
 app/
-├── main.py            # app, 400 handler, /health, icon routes
+├── main.py            # app, lifespan, 400 handler, /health, /ping, icon routes
 ├── static/
 │   └── index.html     # the dashboard page (route injects expenses into it)
 │   └── *.png          # app icons (apple-touch-icon + favicon)
 ├── config.py          # env vars via pydantic-settings
 ├── database.py        # AsyncMongoClient lifespan + get_collection dependency
+├── keepalive.py       # background self-ping so Render's free tier stays awake
 ├── models/expense.py  # ExpenseIn / ExpenseCreated
 ├── routes/auth.py     # accounts, login sessions, credential resolution
 ├── routes/expenses.py # POST/GET/DELETE /api/expenses
 └── routes/view.py     # GET / -> HTML dashboard
 test_api.py            # smoke test, no DB required
+render.yaml            # Render Blueprint: service, env vars, keep-alive
 frontend/              # standalone static dashboard, deploy independently
 ├── index.html
 ├── app.js
@@ -227,6 +229,16 @@ icon, page lives in `app/static/index.html`):
 A wrong or missing key returns `401`. The key itself is never rendered into
 the page source — the JS reads it from the URL you bookmarked.
 
+### Meta endpoints
+
+No API key, no database, safe to call from a monitor or a cron:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Liveness. `{"status":"ok"}`. Render's health check path. |
+| `GET /ping` | Keep-alive. Resets Render's idle timer and reports the self-pinger's state — see **Keeping the API awake**. `ENABLE_CRONJOB_PING=false` turns it into a 404. |
+| `GET /warmup` | Opens the Mongo connection so the first real request doesn't pay for it. |
+
 ### Multiple people
 
 Every credential belongs to one person and the data is **strictly isolated**:
@@ -344,7 +356,109 @@ add your IP (and `0.0.0.0/0` for Render) under **Network Access**.
    - Health check path: `/health`
 4. **Environment → Add Environment Variable**: `MONGODB_URI`, `SHORTCUT_API_KEY`
    (and optionally `MONGODB_DB`, `MONGODB_COLLECTION`). Never commit these.
-5. Deploy, then point the Shortcut at `https://YOUR-APP.onrender.com/api/expenses`.
+5. Add `KEEPALIVE_ENABLED=true` — see **Keeping the API awake** below.
+6. Deploy, then point the Shortcut at `https://YOUR-APP.onrender.com/api/expenses`.
 
-On Render's free tier the service sleeps; the first Shortcut run after idling
-may take ~30s. Bump the Shortcut's URL action timeout if it complains.
+Or skip steps 2–5: `render.yaml` in this repo is a Blueprint. Render →
+**New → Blueprint** → pick the repo, and it creates the service with the
+build/start commands, health check path and keep-alive variables already set,
+prompting only for the two secrets.
+
+## Keeping the API awake
+
+Render's free tier stops a web service after ~15 minutes with no **inbound**
+HTTP request, and the next request then pays a 30–60s cold start. Two
+mechanisms ship here, and they are not redundant — each covers what the other
+cannot:
+
+| | Holds an awake instance awake | Wakes a stopped instance |
+|---|---|---|
+| In-process self-ping (`app/keepalive.py`) | yes | **no** |
+| External cron hitting `/ping` | yes | **yes** |
+
+The self-ping cannot wake a stopped instance for the obvious reason: a process
+that has been stopped pings nothing. So run both. Both are free.
+
+### 1. In-process self-ping
+
+The app pings its own public URL on a timer from a single background task
+started in the FastAPI lifespan, after Mongo is confirmed up. The request
+leaves the container, reaches Render's router and comes back in, which is what
+makes it count as inbound traffic.
+
+```bash
+KEEPALIVE_ENABLED=true            # off by default; turn on for deployed instances only
+KEEPALIVE_INTERVAL_MINUTES=10     # clamped to 1–14; Render sleeps at 15
+KEEPALIVE_PATH=/ping              # use /health if ENABLE_CRONJOB_PING=false
+# KEEPALIVE_URL=https://...       # only for a custom domain (see below)
+```
+
+`KEEPALIVE_URL` is normally left unset: Render injects `RENDER_EXTERNAL_URL`
+and the module falls back to it, so the same config works on a renamed service
+or a second instance. Set it only when the public URL differs from Render's
+(custom domain, non-Render host).
+
+Design notes, so it stays lightweight and cannot affect the API:
+
+- One `asyncio` task, one `httpx.AsyncClient`, one GET every 10 minutes —
+  about 144 requests a day against an endpoint that touches no database.
+- Every failure is caught and logged. A keep-alive that can take the process
+  down is worse than a sleeping instance, so `ping_once` never raises.
+- Each interval is jittered to 85–100% so two instances of the same service
+  drift apart instead of pinging in lockstep.
+- Interval is clamped to 1–14 minutes: a misconfigured `30` would otherwise
+  silently mean "never".
+- The task is cancelled and awaited on shutdown, so a deploy never races an
+  in-flight ping.
+- It never starts locally or in tests — `KEEPALIVE_ENABLED` defaults to false,
+  and it refuses to start with no URL rather than looping on failures.
+
+### 2. External cron (this is the part that can wake it)
+
+Free option — [cron-job.org](https://cron-job.org/):
+
+| Setting | Value |
+|---|---|
+| URL | `https://YOUR-APP.onrender.com/ping` |
+| Schedule | `*/4 * * * *` (every 4 minutes) |
+| Method | GET |
+| Timeout | 30s (allow for a cold start) |
+
+`/ping` needs no API key, touches no database and is sent with
+`Cache-Control: no-store` so a cached 200 can't keep answering for a sleeping
+instance. On a paid plan, uncomment the `type: cron` service in `render.yaml`
+to run the same request on Render instead.
+
+### Verifying it
+
+```bash
+curl -s https://YOUR-APP.onrender.com/ping | python3 -m json.tool
+```
+
+```json
+{
+  "status": "awake",
+  "timestamp": "2026-09-14T23:01:51.648860+00:00",
+  "recommended_external_interval_minutes": 4,
+  "keepalive": {
+    "enabled": true,
+    "running": true,
+    "url": "https://YOUR-APP.onrender.com/ping",
+    "interval_minutes": 10.0,
+    "pings_ok": 4,
+    "pings_failed": 0,
+    "last_status": 200,
+    "last_error": null
+  }
+}
+```
+
+`running: true` with `pings_ok` climbing means the self-ping is working. If
+`enabled` is false, `KEEPALIVE_ENABLED` did not reach the process; if `url` is
+null, neither `KEEPALIVE_URL` nor `RENDER_EXTERNAL_URL` was set; a `last_error`
+of `HTTP 404` means `KEEPALIVE_PATH` is wrong. Render's own logs carry
+`keep-alive pinging <url> every N min` on boot.
+
+Even with both layers, the free tier gives no uptime guarantee — a missed
+window still means a cold start, so keep the Shortcut's URL timeout generous.
+See KEEP_AWAKE_GUIDE.md for paid alternatives.
