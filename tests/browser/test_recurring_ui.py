@@ -233,6 +233,37 @@ try:
            lambda: (_ for _ in ()).throw(AssertionError(active_color))
            if active_color != "rgb(21, 25, 34)" else None)
 
+     print("\n9. The palette is monochrome apart from income/expense")
+     # The reference design uses no violet anywhere, so the token is gone.
+     # Checking the token rather than one element guards the whole palette.
+     token = page.evaluate(
+         "getComputedStyle(document.documentElement).getPropertyValue('--violet').trim()")
+     check("the --violet token no longer exists",
+           lambda: (_ for _ in ()).throw(AssertionError(f"--violet is back: {token}"))
+           if token else None)
+
+     # The budget rows only render with a limit set, so set one.
+     page.request.put(f"http://127.0.0.1:{API_PORT}/api/limits",
+                      headers={"X-API-Key": KEY, "Content-Type": "application/json"},
+                      data={"monthly_limit": 40000})
+     page.reload(wait_until="networkidle")
+     page.wait_for_timeout(900)
+     check("budget section renders with a limit set",
+           lambda: expect(page.locator("#budgetSection")).to_be_visible())
+     check("the month row is ink, not violet",
+           lambda: expect(page.locator(".budget-row-icon.ink")).to_have_count(1))
+     month_color = page.evaluate(
+         "(el => el ? getComputedStyle(el).color : 'missing')"
+         "(document.querySelector('.budget-row-icon.ink'))")
+     check("month row icon computes to near-black",
+           lambda: (_ for _ in ()).throw(AssertionError(month_color))
+           if month_color != "rgb(21, 25, 34)" else None)
+     # green and amber survive: they carry meaning in the design
+     check("week row keeps its green",
+           lambda: expect(page.locator(".budget-row-icon.green")).to_have_count(1))
+     check("today row keeps its amber",
+           lambda: expect(page.locator(".budget-row-icon.orange")).to_have_count(1))
+
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
      check(f"no console/page errors ({len(real_errors)})",
            lambda: (_ for _ in ()).throw(AssertionError(real_errors[0])) if real_errors else None)

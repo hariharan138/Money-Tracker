@@ -377,10 +377,10 @@ function budgetAlert(monthSpent) {
 const BUDGET_ROW_ICONS = {
   green: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/></svg>',
   orange: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
-  violet: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19V11M12 19V5M19 19v-7"/></svg>',
+  ink: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19V11M12 19V5M19 19v-7"/></svg>',
 };
-const BUDGET_ROW_COLOR = { green: 'var(--green)', orange: 'var(--orange)', violet: 'var(--violet)' };
-const BUDGET_ROW_TEXT = { green: 'var(--green)', orange: '#f59e0b', violet: 'var(--violet)' };
+const BUDGET_ROW_COLOR = { green: 'var(--green)', orange: 'var(--orange)', ink: 'var(--ink)' };
+const BUDGET_ROW_TEXT = { green: 'var(--green)', orange: '#f59e0b', ink: 'var(--ink)' };
 
 function budgetRow(label, spent, target, key) {
   const pct = target > 0 ? Math.min(100, (spent / target) * 100) : 0;
@@ -442,7 +442,7 @@ function renderBudget() {
   $('#budgetBars').innerHTML =
     budgetRow('This week', spent.week, weekTarget, 'green') +
     budgetRow('Today', spent.today, dayTarget, 'orange') +
-    budgetRow('This month', spent.month, monthlyLimit, 'violet');
+    budgetRow('This month', spent.month, monthlyLimit, 'ink');
 }
 
 function openLimitModal() {

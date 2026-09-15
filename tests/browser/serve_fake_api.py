@@ -17,12 +17,17 @@ from app.database import (                                    # noqa: E402
     get_recurring_collection,
 )
 
+# One instance each, created here rather than inside the lambdas: a
+# `lambda: FakeMongo()` builds a fresh empty collection per request, so a
+# write lands in a throwaway and every read comes back empty.
 expenses = FakeMongo("recurring_id", "occurrence_key")
 rules = FakeMongo()
+limits = FakeMongo()
+profiles = FakeMongo()
 app_main.app.dependency_overrides[get_collection] = lambda: expenses
 app_main.app.dependency_overrides[get_recurring_collection] = lambda: rules
-app_main.app.dependency_overrides[get_limits_collection] = lambda: FakeMongo()
-app_main.app.dependency_overrides[get_profiles_collection] = lambda: FakeMongo()
+app_main.app.dependency_overrides[get_limits_collection] = lambda: limits
+app_main.app.dependency_overrides[get_profiles_collection] = lambda: profiles
 
 
 @contextlib.asynccontextmanager

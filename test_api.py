@@ -209,6 +209,16 @@ class FakeMongo:
         self.docs.append(doc)
         return type("R", (), {"inserted_id": doc["_id"]})()
 
+    async def replace_one(self, query, doc, upsert=False):
+        hit = await self.find_one(query)
+        if hit:
+            self.docs[self.docs.index(hit)] = doc
+            return type("R", (), {"upserted_id": None, "modified_count": 1})()
+        if upsert:
+            self.docs.append(doc)
+            return type("R", (), {"upserted_id": doc.get("_id"), "modified_count": 0})()
+        return type("R", (), {"upserted_id": None, "modified_count": 0})()
+
     async def update_one(self, query, update):
         hit = await self.find_one(query)
         if hit:
