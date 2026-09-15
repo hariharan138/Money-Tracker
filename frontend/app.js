@@ -59,6 +59,10 @@ let expenses = [];
 let monthlyLimit = null;
 let avatarData = null;
 let account = null;   // { username, api_key } once signed in with a password
+let recurring = [];
+// Which credential the once-per-login side data (identity, limit, avatar,
+// recurring rules) was loaded for. Keeps that data off the 15s poll.
+let sideDataKey = null;
 const state = { preset: 'all', payment: 'all', q: '', sort: 'newest', chartRange: 'month' };
 
 function dateOf(value) {
@@ -161,7 +165,7 @@ function row(item, compact = false) {
     <div class="main">
       <div class="name">${escapeHtml(item.category || 'Expense')}</div>
       ${desc ? `<div class="desc">${escapeHtml(desc)}</div>` : ''}
-      <div class="meta">${escapeHtml(time)}${item.payment_method ? ` · ${escapeHtml(item.payment_method)}` : ''}</div>
+      <div class="meta">${escapeHtml(time)}${item.payment_method ? ` · ${escapeHtml(item.payment_method)}` : ''}${item.recurring_id ? '<span class="tx-repeat" title="From a recurring rule">↻</span>' : ''}</div>
     </div>
     <div class="amount">-${INR.format(item.amount)}</div>
     ${compact ? '' : `<button class="delete" data-delete="${escapeHtml(item.id)}" aria-label="Delete expense">×</button>`}
@@ -541,6 +545,108 @@ async function loadProfile() {
   }
 }
 
+const FREQUENCY_LABEL = { daily: 'Every day', weekly: 'Every week', monthly: 'Every month' };
+
+async function loadRecurring() {
+  if (!KEY) return;
+  try {
+    const response = await apiFetch('/api/recurring', authed({ cache: 'no-store' }));
+    if (!response.ok) return;
+    recurring = (await response.json()).recurring || [];
+    renderRecurring();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+/** "Every month · next on 5 Oct", or why it will not run again. */
+function recurringWhen(rule) {
+  const label = FREQUENCY_LABEL[rule.frequency] || rule.frequency;
+  if (!rule.active) return `${label} · paused`;
+  if (!rule.next_run) return `${label} · finished`;
+  const [y, m, d] = rule.next_run.split('-').map(Number);
+  const when = new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `${label} · next on ${when}`;
+}
+
+function renderRecurring() {
+  const count = $('#profileRecurringCount');
+  if (count) {
+    const active = recurring.filter(rule => rule.active).length;
+    count.textContent = recurring.length
+      ? `${active} active${recurring.length > active ? ` / ${recurring.length}` : ''}`
+      : 'None';
+  }
+  const list = $('#recurringList');
+  if (!list) return;
+  list.innerHTML = recurring.length
+    ? recurring.map(rule => `
+        <div class="recurring-item${rule.active ? '' : ' paused'}">
+          <div class="recurring-item-name">${escapeHtml(rule.category || 'Expense')}</div>
+          <div class="recurring-item-amt">${INR.format(rule.amount)}</div>
+          <div class="recurring-item-meta">${escapeHtml(recurringWhen(rule))}${rule.payment_method ? ` · ${escapeHtml(rule.payment_method)}` : ''}</div>
+          <div class="recurring-item-actions">
+            <button type="button" data-recurring-toggle="${escapeHtml(rule.id)}">${rule.active ? 'Pause' : 'Resume'}</button>
+            <button type="button" class="danger" data-recurring-delete="${escapeHtml(rule.id)}">Delete</button>
+          </div>
+        </div>`).join('')
+    : '<div class="empty">No recurring expenses yet.</div>';
+}
+
+function openRecurringModal() {
+  renderRecurring();
+  $('#recurringModal').hidden = false;
+  loadRecurring();  // refresh in the background; the list is already drawn
+}
+
+function closeRecurringModal() {
+  $('#recurringModal').hidden = true;
+}
+
+async function toggleRecurring(id) {
+  const rule = recurring.find(item => item.id === id);
+  if (!rule) return;
+  try {
+    const response = await apiFetch(`/api/recurring/${encodeURIComponent(id)}`, authed({
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !rule.active }),
+    }));
+    if (!response.ok) throw new Error('Could not update this rule');
+    // reload rather than patching local state: next_run is computed server-side
+    await loadRecurring();
+    // resuming can make occurrences due right away
+    load({ quiet: true }).catch(() => {});
+    setStatus(rule.active ? 'Recurring expense paused' : 'Recurring expense resumed');
+  } catch (error) {
+    console.error(error);
+    alert('Could not update this recurring expense. Try again.');
+  }
+}
+
+async function removeRecurring(id) {
+  const rule = recurring.find(item => item.id === id);
+  if (!rule) return;
+  // Deliberately two questions: deleting the rule is not the same as
+  // deleting spending that already happened.
+  if (!confirm(`Stop the recurring ${rule.category || 'expense'}?`)) return;
+  const purge = confirm('Also delete the expenses it already added?\n\nOK = delete them too, Cancel = keep them.');
+  try {
+    const response = await apiFetch(
+      `/api/recurring/${encodeURIComponent(id)}${purge ? '?purge=true' : ''}`,
+      authed({ method: 'DELETE' }),
+    );
+    if (!response.ok && response.status !== 404) throw new Error('Could not delete this rule');
+    recurring = recurring.filter(item => item.id !== id);
+    renderRecurring();
+    if (purge) await load({ quiet: true });
+    setStatus('Recurring expense deleted');
+  } catch (error) {
+    console.error(error);
+    alert('Could not delete this recurring expense. Try again.');
+  }
+}
+
 /** Downscale a picked photo to a ~256px JPEG data URL so it stores cheaply. */
 function fileToAvatar(file) {
   return new Promise((resolve, reject) => {
@@ -865,6 +971,7 @@ function render() {
   renderChart();
   updateAddPreview();
   renderBudget();
+  renderRecurring();
 }
 
 function showTab(name) {
@@ -882,6 +989,17 @@ function updateAddPreview() {
   const amount = Number($('#expenseAmount')?.value || 0);
   $('#addAmountPreview').textContent = INR.format(amount || 0);
   $('#addPaymentPreview').textContent = $('#expensePayment')?.value || 'UPI';
+
+  const repeat = $('#expenseRepeat')?.value || 'none';
+  const hint = $('#repeatHint');
+  const button = $('#saveExpense');
+  if (hint) {
+    hint.hidden = repeat === 'none';
+    hint.textContent = repeat === 'none'
+      ? ''
+      : `Saved as a rule — ${(FREQUENCY_LABEL[repeat] || repeat).toLowerCase()}, starting today. Manage it from Profile.`;
+  }
+  if (button) button.textContent = repeat === 'none' ? 'Save expense' : 'Save recurring expense';
 }
 
 async function load({ quiet = false } = {}) {
@@ -911,9 +1029,18 @@ async function load({ quiet = false } = {}) {
     render();
     setStatus('Updated just now');
     syncProfileKeyUi(`Connected · ${maskKey(KEY)}`, 'ok');
-    loadMe();
-    loadLimit();
-    loadProfile();
+    // Only the expense list belongs on the poll. Identity, limit, profile and
+    // recurring rules change when *you* change them, and /api/profile carries
+    // the avatar inline as a base64 data URL — refetching that every 15s
+    // re-downloaded the same photo ~240 times an hour. Loaded once per
+    // credential, and again only when something actually changes it.
+    if (sideDataKey !== KEY) {
+      sideDataKey = KEY;
+      loadMe();
+      loadLimit();
+      loadProfile();
+      loadRecurring();
+    }
     return true;
   } catch (error) {
     console.error(error);
@@ -948,6 +1075,8 @@ function clearApiKey() {
   expenses = [];
   monthlyLimit = null;
   avatarData = null;
+  recurring = [];
+  sideDataKey = null;
   writeStoredApiKey('');
   $('#apiKeyInput').value = '';
   render();
@@ -965,6 +1094,45 @@ async function remove(id) {
     render();
   } else {
     alert('Could not delete this expense.');
+  }
+}
+
+async function saveRecurringRule({ amount, category, paymentMethod, repeat, saveButton, error }) {
+  saveButton.disabled = true;
+  saveButton.textContent = 'Saving…';
+  setStatus('Saving recurring expense…', 'muted');
+  try {
+    const response = await apiFetch('/api/recurring', authed({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount, category, payment_method: paymentMethod, frequency: repeat,
+      }),
+    }));
+    if (!response.ok) {
+      throw new Error(response.status === 409
+        ? 'You have too many recurring expenses.'
+        : 'Could not save this recurring expense.');
+    }
+    const body = await response.json().catch(() => ({}));
+    $('#expenseForm').reset();
+    $('#expenseCategory').value = 'Expense';
+    $('#expenseRepeat').value = 'none';
+    updateAddPreview();
+    error.textContent = '';
+    await loadRecurring();
+    await load({ quiet: true });
+    showTab('transactions');
+    const added = body.created_expenses || 0;
+    setStatus(added
+      ? `Recurring expense saved · ${added} added`
+      : 'Recurring expense saved');
+  } catch (err) {
+    error.textContent = err.message || 'Could not save this recurring expense.';
+    setStatus('Save failed — try again', 'err');
+  } finally {
+    saveButton.disabled = false;
+    updateAddPreview();  // restores the right label for whatever Repeat now says
   }
 }
 
@@ -986,6 +1154,14 @@ async function saveExpense(event) {
   }
 
   const saveButton = $('#saveExpense');
+  const repeat = $('#expenseRepeat')?.value || 'none';
+  if (repeat !== 'none') {
+    // A rule is not an expense: the backend materialises today's occurrence
+    // (and any it owes) itself, so there is nothing to show optimistically
+    // here — an optimistic row would duplicate the one the reload brings back.
+    await saveRecurringRule({ amount, category, paymentMethod, repeat, saveButton, error });
+    return;
+  }
   const tempId = `local-${Date.now()}`;
   const nowIso = new Date().toISOString();
   const optimistic = {
@@ -1054,6 +1230,26 @@ $('#apiKeyInput').addEventListener('keydown', event => {
 $('#expenseForm').onsubmit = saveExpense;
 $('#expenseAmount').oninput = updateAddPreview;
 $('#expensePayment').onchange = updateAddPreview;
+$('#expenseRepeat').onchange = updateAddPreview;
+
+$('#manageRecurring').onclick = () => {
+  if (!KEY) {
+    showTab('profile');
+    return;
+  }
+  openRecurringModal();
+};
+$('#closeRecurring').onclick = closeRecurringModal;
+$('[data-close-recurring]').onclick = closeRecurringModal;
+$('#recurringList').onclick = event => {
+  const toggle = event.target.closest('[data-recurring-toggle]');
+  if (toggle) {
+    toggleRecurring(toggle.dataset.recurringToggle);
+    return;
+  }
+  const remove = event.target.closest('[data-recurring-delete]');
+  if (remove) removeRecurring(remove.dataset.recurringDelete);
+};
 
 $$('[data-tab]').forEach(button => {
   button.onclick = () => {
@@ -1083,7 +1279,11 @@ nav.addEventListener('pointerdown', event => {
     dx: 0,
     dragging: false,
   };
-  try { nav.setPointerCapture(event.pointerId); } catch (_) { /* not supported */ }
+  // Capture is claimed in pointermove, once this is actually a drag -- never
+  // here. Capturing on pointerdown retargets the *click* that follows to the
+  // capture element, so every tab button's own onclick stopped firing and the
+  // bar was dead for any mouse pointer. Touch hid it: a touch pointer is
+  // implicitly captured to its own target, so the retarget changed nothing.
 });
 
 nav.addEventListener('pointermove', event => {
@@ -1096,7 +1296,13 @@ nav.addEventListener('pointermove', event => {
     return;
   }
   dragState.dx = dx;
-  if (Math.abs(dx) > 4) dragState.dragging = true;
+  if (Math.abs(dx) > 4 && !dragState.dragging) {
+    dragState.dragging = true;
+    // Now that it is a drag, capture so it survives the pointer leaving the
+    // bar. A drag ends in a retargeted click, which navigates nothing -- and
+    // suppressTabClick below covers the touch case, where there is no capture.
+    try { nav.setPointerCapture(event.pointerId); } catch (_) { /* unsupported */ }
+  }
   // Rubber-band at the edges so it stays liquid instead of flying away.
   const max = Math.min(nav.offsetWidth * 0.35, 110);
   const tx = dx > max ? max + (dx - max) * 0.3 : (dx < -max ? -max - (dx + max) * 0.3 : dx);

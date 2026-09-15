@@ -16,6 +16,7 @@ from .routes.auth import router as auth_router
 from .routes.expenses import router
 from .routes.limits import router as limits_router
 from .routes.profiles import router as profiles_router
+from .routes.recurring import router as recurring_router
 from .routes.view import router as view_router
 from .config import cors_origins, settings
 
@@ -59,7 +60,10 @@ if _cors_origins:
         CORSMiddleware,
         allow_origins=_cors_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        # PATCH is used to pause/resume a recurring rule. A method missing
+        # here fails the browser preflight, which no TestClient call
+        # reproduces because TestClient never sends one.
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "X-API-Key"],
     )
 
@@ -67,6 +71,7 @@ app.include_router(auth_router)
 app.include_router(router)
 app.include_router(limits_router)
 app.include_router(profiles_router)
+app.include_router(recurring_router)
 app.include_router(view_router)
 
 

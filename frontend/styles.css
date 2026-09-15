@@ -1406,3 +1406,117 @@ body.on-add .bottom-nav { display: none; }
   color: #5b6068;
   font-size: 13px;
 }
+
+/* —— Recurring expenses —— */
+.profile-card-button {
+  width: 100%;
+  gap: 10px;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.profile-card-button svg {
+  color: var(--muted);
+  flex: none;
+}
+
+.profile-card-button:active {
+  transform: scale(0.99);
+}
+
+.repeat-hint {
+  margin: -6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.modal-hint-quiet {
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  opacity: 0.8;
+}
+
+.recurring-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* a long list scrolls inside the card rather than pushing it off-screen */
+  max-height: 46vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.recurring-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f4f5f7;
+  text-align: left;
+}
+
+.recurring-item.paused {
+  opacity: 0.62;
+}
+
+.recurring-item-name {
+  font-size: 13.5px;
+  font-weight: 750;
+  letter-spacing: -0.2px;
+}
+
+.recurring-item-amt {
+  font-size: 13.5px;
+  font-weight: 800;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.recurring-item-meta {
+  grid-column: 1 / -1;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.recurring-item-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.recurring-item-actions button {
+  flex: 1;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: #e7e9ed;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.recurring-item-actions button:active {
+  transform: scale(0.98);
+}
+
+.recurring-item-actions .danger {
+  background: #fdeaea;
+  color: var(--danger);
+}
+
+/* the ↻ marker on an expense a rule generated */
+.tx-repeat {
+  display: inline-block;
+  margin-left: 4px;
+  font-weight: 700;
+  opacity: 0.75;
+}

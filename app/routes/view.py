@@ -9,8 +9,9 @@ from fastapi.responses import Response
 from pymongo.asynchronous.collection import AsyncCollection
 
 from ..config import settings
-from ..database import get_collection
+from ..database import get_collection, get_recurring_collection
 from .expenses import _to_json, resolve_user, user_scope
+from .recurring import catch_up
 
 router = APIRouter(tags=["view"])
 
@@ -22,7 +23,11 @@ async def view_expenses(
     # any valid user key opens the dashboard — but only that user's expenses
     user: str = Depends(resolve_user),
     collection: AsyncCollection = Depends(get_collection),
+    rules: AsyncCollection = Depends(get_recurring_collection),
 ) -> Response:
+    # same catch-up as GET /api/expenses, so the legacy dashboard does not
+    # show a stale picture that the app would then fill in
+    await catch_up(user, rules, collection)
     docs = await collection.find(user_scope(user)).sort("date", -1).to_list(500)
     bootstrap = json.dumps(
         [_to_json(d) for d in docs], ensure_ascii=False, separators=(",", ":")

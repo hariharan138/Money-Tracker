@@ -10,9 +10,10 @@ from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import PyMongoError
 
 from ..config import settings
-from ..database import get_collection
+from ..database import get_collection, get_recurring_collection
 from ..models.expense import ExpenseCreated, ExpenseIn, ensure_utc, utcnow
 from .auth import resolve_user
+from .recurring import catch_up
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["expenses"])
@@ -48,6 +49,9 @@ def _to_json(d: dict) -> dict:
         "notes": d.get("notes"),
         "created_at": d["created_at"].isoformat() if d.get("created_at") else None,
         "user": d.get("user") or settings.default_user,
+        # set when a recurring rule generated this expense, so the UI can mark
+        # it; absent on everything logged by hand or by the Shortcut
+        "recurring_id": str(d["recurring_id"]) if d.get("recurring_id") else None,
     }
 
 
@@ -86,7 +90,13 @@ async def list_expenses(
     limit: int = Query(default=500, ge=1, le=2000),
     user: str = Depends(resolve_user),
     collection: AsyncCollection = Depends(get_collection),
+    rules: AsyncCollection = Depends(get_recurring_collection),
 ) -> Response:
+    # Recurring rules are materialised on read, before the query runs, so a
+    # rule that came due shows up in this same response rather than the next
+    # one. catch_up never raises — a broken rule must not stop someone reading
+    # the expenses they already have.
+    await catch_up(user, rules, collection)
     # a key can only ever read its own expenses; no ?user= override exists
     query: dict = user_scope(user)
     if category:

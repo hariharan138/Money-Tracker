@@ -4,7 +4,12 @@ import os
 
 os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017")
 os.environ.setdefault("SHORTCUT_API_KEY", "test-key")
+# Set before app.main is imported, because the CORS middleware is installed at
+# import time. Without it the preflight test below silently no-ops -- which is
+# how a missing allow_methods entry reached a browser twice.
+os.environ.setdefault("CORS_ORIGINS", "https://dashboard.example.com")
 
+from bson import ObjectId  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from pymongo.errors import DuplicateKeyError  # noqa: E402
 
@@ -13,6 +18,7 @@ from app.database import (  # noqa: E402
     get_collection,
     get_limits_collection,
     get_profiles_collection,
+    get_recurring_collection,
     get_sessions_collection,
     get_users_collection,
 )
@@ -129,14 +135,117 @@ class FakeStore:
         return type("R", (), {"deleted_count": 1 if hit else 0})()
 
 
+class FakeMongo:
+    """In-memory collection with the slice of the driver the recurring code
+    uses: exact-match queries, a composite unique index, find/to_list,
+    find_one_and_update, update_one, delete_one/delete_many.
+
+    The unique index is modelled because it is load-bearing — it is what stops
+    two concurrent catch-ups both inserting the same occurrence.
+    """
+
+    def __init__(self, *unique_together):
+        self.docs: list[dict] = []
+        self.unique_together = unique_together
+
+    def clear(self):
+        self.docs.clear()
+
+    @staticmethod
+    def _matches(doc, query):
+        """Exact match, plus the $in that user_scope() emits for the default
+        user (it has to match both the name and a missing/null user field).
+        Other operators are not modelled — no code path under test uses them.
+        """
+        for key, want in (query or {}).items():
+            have = doc.get(key)
+            if isinstance(want, dict):
+                if "$in" in want:
+                    if have not in want["$in"]:
+                        return False
+                else:
+                    raise AssertionError(f"FakeMongo cannot match {key}: {want}")
+            elif have != want:
+                return False
+        return True
+
+    def _find(self, query):
+        return [d for d in self.docs if self._matches(d, query)]
+
+    async def find_one(self, query):
+        hits = self._find(query)
+        return hits[0] if hits else None
+
+    def find(self, query=None):
+        self._pending = self._find(query)
+        return self
+
+    async def to_list(self, n=None):
+        return list(self._pending[:n] if n else self._pending)
+
+    async def count_documents(self, query):
+        return len(self._find(query))
+
+    def sort(self, field, direction=1):
+        self._pending = sorted(
+            self._pending,
+            key=lambda d: (d.get(field) is None, d.get(field)),
+            reverse=direction < 0,
+        )
+        return self
+
+    def limit(self, n):
+        self._pending = self._pending[:n]
+        return self
+
+    async def insert_one(self, doc):
+        if self.unique_together and all(f in doc for f in self.unique_together):
+            key = tuple(doc[f] for f in self.unique_together)
+            if any(tuple(d.get(f) for f in self.unique_together) == key for d in self.docs):
+                raise DuplicateKeyError(f"duplicate {self.unique_together}")
+        # a real ObjectId, because the routes round-trip it through
+        # ObjectId(str(id)) and a fake string id would 400 on every lookup
+        doc.setdefault("_id", ObjectId())
+        self.docs.append(doc)
+        return type("R", (), {"inserted_id": doc["_id"]})()
+
+    async def update_one(self, query, update):
+        hit = await self.find_one(query)
+        if hit:
+            hit.update(update.get("$set", {}))
+        return type("R", (), {"modified_count": 1 if hit else 0})()
+
+    async def find_one_and_update(self, query, update, return_document=True):
+        hit = await self.find_one(query)
+        if hit:
+            hit.update(update.get("$set", {}))
+        return hit
+
+    async def delete_one(self, query):
+        hit = await self.find_one(query)
+        if hit:
+            self.docs.remove(hit)
+        return type("R", (), {"deleted_count": 1 if hit else 0})()
+
+    async def delete_many(self, query):
+        hits = self._find(query)
+        for doc in hits:
+            self.docs.remove(doc)
+        return type("R", (), {"deleted_count": len(hits)})()
+
+
 users_store = FakeStore("username", "api_key")
 sessions_store = FakeStore("token")
+# Empty by default, so catch_up is a no-op for every test that isn't about
+# recurring rules.
+recurring_store = FakeMongo()
 
 app.dependency_overrides[get_collection] = lambda: FakeCollection()
 app.dependency_overrides[get_users_collection] = lambda: users_store
 app.dependency_overrides[get_sessions_collection] = lambda: sessions_store
 app.dependency_overrides[get_limits_collection] = lambda: FakeLimitsCollection()
 app.dependency_overrides[get_profiles_collection] = lambda: FakeProfilesCollection()
+app.dependency_overrides[get_recurring_collection] = lambda: recurring_store
 client = TestClient(app)  # lifespan is skipped: get_collection is overridden
 HEAD = {"X-API-Key": "test-key"}
 
@@ -215,7 +324,10 @@ def test_list_expenses_auth_and_shape():
     assert body["success"] is True and body["count"] == 2
     e = body["expenses"][0]
     assert set(e) == {"id", "amount", "category", "description", "date",
-                      "payment_method", "notes", "created_at", "user"}
+                      "payment_method", "notes", "created_at", "user",
+                      "recurring_id"}
+    # null on everything logged by hand; set only on generated occurrences
+    assert e["recurring_id"] is None
     assert e["amount"] == 500.0 and e["date"].startswith("2026-08-23T19:30")
     assert e["user"] == settings.default_user
 
@@ -284,10 +396,11 @@ def test_cors_allows_the_browser_to_post():
     """The dashboard adds expenses with POST; it was missing from allow_methods."""
     from app.main import _cors_origins
 
-    origin = _cors_origins[0] if _cors_origins else None
-    if origin is None:
-        return  # CORS not configured in this environment
-    for method in ("GET", "POST", "PUT", "DELETE"):
+    assert _cors_origins, "CORS_ORIGINS must be set for this test to mean anything"
+    origin = _cors_origins[0]
+    # PATCH included: pausing a recurring rule needs it, and a method absent
+    # from allow_methods fails the preflight before the route is ever reached.
+    for method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
         r = client.options("/api/expenses", headers={
             "Origin": origin,
             "Access-Control-Request-Method": method,
@@ -328,6 +441,10 @@ def test_multi_user_isolation():
 
 
 def test_view_scoped_to_owner_only():
+    # default_user is set explicitly: this used to depend on the value
+    # test_multi_user_isolation leaked, so it broke the moment that test
+    # started restoring it.
+    orig_default, settings.default_user = settings.default_user, "Hari"
     settings.expense_users = "Wife:wife-secret-key"
     try:
         # Hari (default user) also sees legacy docs without a user field
@@ -344,6 +461,7 @@ def test_view_scoped_to_owner_only():
         assert 'id="users"' not in r.text  # no cross-user UI
     finally:
         settings.expense_users = ""
+        settings.default_user = orig_default
     assert client.get("/?key=nope").status_code == 401
 
 
@@ -456,15 +574,34 @@ def test_register_cannot_hijack_an_env_users_name():
     """The username is what expenses are scoped by, so reusing an env user's
     name would hand the new account that person's existing data."""
     users_store.clear()
-    orig = settings.expense_users
+    orig_users, orig_default = settings.expense_users, settings.default_user
+    # a default_user of 3+ characters: the stock "Me" is too short to register
+    # at all (Credentials enforces min_length=3), so it would 400 on input
+    # validation and never reach the collision check this test is about.
     settings.expense_users = "Wife:wife-secret-key"
+    settings.default_user = "Hari"
     try:
         for name in ("wife", "WIFE", settings.default_user.lower()):
             r = client.post("/api/auth/register",
                             json={"username": name, "password": "correct-horse"})
             assert r.status_code == 409, name
     finally:
-        settings.expense_users = orig
+        settings.expense_users, settings.default_user = orig_users, orig_default
+
+
+def test_register_rejects_a_name_too_short_to_own_expenses():
+    """The gap the test above used to fall into: a DEFAULT_USER shorter than
+    Credentials allows can never be registered, so it needs no collision
+    check — but it must be a clean 400, not a 500."""
+    users_store.clear()
+    orig = settings.default_user
+    settings.default_user = "Me"
+    try:
+        r = client.post("/api/auth/register",
+                        json={"username": "Me", "password": "correct-horse"})
+        assert r.status_code == 400
+    finally:
+        settings.default_user = orig
 
 
 def test_login_flow_and_wrong_password():
@@ -728,3 +865,258 @@ def test_keepalive_runs_and_stops_with_the_app_lifespan():
         ka.keepalive.last_status = ka.keepalive.last_error = None
         ka.keepalive.url = ""
         ka.keepalive.interval_s = 0.0
+
+
+# ------------------------------------------------------------------ recurring
+# The calendar maths is pure, so it is tested directly; the endpoints are
+# tested through the app with an in-memory collection that models the unique
+# index the idempotency guarantee depends on.
+
+
+def test_occurrences_daily_weekly_and_monthly():
+    from datetime import date as D
+
+    from app.models.recurring import occurrences
+
+    assert occurrences("daily", D(2026, 3, 1), D(2026, 3, 4)) == [
+        D(2026, 3, 1), D(2026, 3, 2), D(2026, 3, 3), D(2026, 3, 4)]
+    assert occurrences("weekly", D(2026, 3, 2), D(2026, 3, 24)) == [
+        D(2026, 3, 2), D(2026, 3, 9), D(2026, 3, 16), D(2026, 3, 23)]
+    assert occurrences("monthly", D(2026, 1, 5), D(2026, 4, 1)) == [
+        D(2026, 1, 5), D(2026, 2, 5), D(2026, 3, 5)]
+    # nothing is due before the rule starts
+    assert occurrences("daily", D(2026, 3, 10), D(2026, 3, 1)) == []
+
+
+def test_monthly_rule_anchored_past_the_end_of_short_months():
+    """A rule set on the 31st must not drift permanently onto the 28th: it is
+    clamped for February and returns to the 31st afterwards."""
+    from datetime import date as D
+
+    from app.models.recurring import occurrences
+
+    assert occurrences("monthly", D(2026, 1, 31), D(2026, 5, 1)) == [
+        D(2026, 1, 31), D(2026, 2, 28), D(2026, 3, 31), D(2026, 4, 30)]
+    # and a leap year gets the 29th
+    assert occurrences("monthly", D(2028, 1, 31), D(2028, 3, 1)) == [
+        D(2028, 1, 31), D(2028, 2, 29)]
+
+
+def test_occurrences_respects_after_end_and_cap():
+    from datetime import date as D
+
+    from app.models.recurring import occurrences
+
+    # `after` is the last date already materialised, so it is excluded
+    assert occurrences("daily", D(2026, 3, 1), D(2026, 3, 5), after=D(2026, 3, 3)) == [
+        D(2026, 3, 4), D(2026, 3, 5)]
+    # the rule's own end date wins over the window
+    assert occurrences("daily", D(2026, 3, 1), D(2026, 3, 9), end=D(2026, 3, 3)) == [
+        D(2026, 3, 1), D(2026, 3, 2), D(2026, 3, 3)]
+    # a back-dated rule fills in a window at a time instead of thousands at once
+    assert occurrences("daily", D(2020, 1, 1), D(2026, 1, 1), cap=5) == [
+        D(2020, 1, 1), D(2020, 1, 2), D(2020, 1, 3), D(2020, 1, 4), D(2020, 1, 5)]
+
+
+def test_occurrence_is_stored_at_noon_utc():
+    """Midnight UTC would land on the previous local day for anyone west of
+    UTC, and the dashboard groups by local day."""
+    from datetime import date as D
+
+    from app.models.recurring import as_datetime
+
+    stamp = as_datetime(D(2026, 3, 9))
+    assert (stamp.hour, stamp.tzinfo) == (12, __import__("datetime").timezone.utc)
+    assert stamp.date() == D(2026, 3, 9)
+
+
+class recurring_env:
+    """Swap in a realistic expenses collection (with the composite unique
+    index) for the duration of a recurring test, then put the default back."""
+
+    def __enter__(self):
+        self.expenses = FakeMongo("recurring_id", "occurrence_key")
+        recurring_store.clear()
+        app.dependency_overrides[get_collection] = lambda: self.expenses
+        return self.expenses
+
+    def __exit__(self, *exc):
+        app.dependency_overrides[get_collection] = lambda: FakeCollection()
+        recurring_store.clear()
+        return False
+
+
+def days_ago(n):
+    from datetime import timedelta
+
+    from app.models.recurring import today_utc
+
+    return (today_utc() - timedelta(days=n)).isoformat()
+
+
+def test_creating_a_rule_backfills_from_its_start_date():
+    with recurring_env() as expenses:
+        r = client.post("/api/recurring", headers=HEAD, json={
+            "amount": 50, "category": "Coffee", "frequency": "daily",
+            "payment_method": "upi", "start_date": days_ago(3),
+        })
+        assert r.status_code == 201, r.text
+        body = r.json()
+        # today plus the three days before it
+        assert body["created_expenses"] == 4
+        assert body["recurring"]["frequency"] == "daily"
+        assert body["recurring"]["active"] is True
+        assert body["recurring"]["payment_method"] == "UPI"  # normalised
+
+        assert len(expenses.docs) == 4
+        one = expenses.docs[0]
+        assert one["amount"] == 50
+        assert (one["category"], one["user"]) == ("Coffee", settings.default_user)
+        # every generated expense is linked and stamped for the unique index
+        assert str(one["recurring_id"]) == body["recurring"]["id"]
+        assert one["occurrence_key"] == days_ago(3)
+        assert one["date"].hour == 12
+
+
+def test_catch_up_is_idempotent_under_repeated_reads():
+    """The dashboard polls every 15s and can fail over between two backends
+    writing to one database, so the same occurrence gets attempted again and
+    again. The unique index, not a read-then-write, is what makes that safe."""
+    with recurring_env() as expenses:
+        client.post("/api/recurring", headers=HEAD, json={
+            "amount": 18000, "category": "Rent", "frequency": "daily",
+            "start_date": days_ago(2),
+        })
+        assert len(expenses.docs) == 3
+
+        # simulate the cursor never advancing (a failed update_one, or a
+        # concurrent request that read the rule before it moved)
+        for rule in recurring_store.docs:
+            rule["last_occurrence"] = None
+        for _ in range(3):
+            assert client.get("/api/expenses", headers=HEAD).status_code == 200
+        assert len(expenses.docs) == 3, "catch-up duplicated occurrences"
+
+
+def test_a_paused_rule_stops_generating():
+    with recurring_env() as expenses:
+        rule_id = client.post("/api/recurring", headers=HEAD, json={
+            "amount": 10, "category": "Tea", "frequency": "daily",
+            "start_date": days_ago(1),
+        }).json()["recurring"]["id"]
+        assert len(expenses.docs) == 2
+
+        r = client.patch(f"/api/recurring/{rule_id}", headers=HEAD, json={"active": False})
+        assert r.status_code == 200
+        assert r.json()["recurring"]["active"] is False
+        assert r.json()["recurring"]["next_run"] is None
+        # the amount and category survived a partial update
+        assert r.json()["recurring"]["amount"] == 10
+        assert r.json()["recurring"]["category"] == "Tea"
+
+        for rule in recurring_store.docs:
+            rule["last_occurrence"] = None  # would regenerate if it were active
+        client.get("/api/expenses", headers=HEAD)
+        assert len(expenses.docs) == 2
+
+
+def test_rules_are_scoped_to_their_owner():
+    orig = settings.expense_users
+    settings.expense_users = "Wife:wife-secret-key"
+    try:
+        with recurring_env():
+            mine = client.post("/api/recurring", headers=HEAD, json={
+                "amount": 99, "category": "Gym", "frequency": "monthly",
+            }).json()["recurring"]["id"]
+
+            wife = {"X-API-Key": "wife-secret-key"}
+            assert client.get("/api/recurring", headers=wife).json()["count"] == 0
+            # another user's rule is a 404, not a 403: its existence is not leaked
+            assert client.patch(f"/api/recurring/{mine}", headers=wife,
+                                json={"active": False}).status_code == 404
+            assert client.delete(f"/api/recurring/{mine}", headers=wife).status_code == 404
+            # still mine, still untouched
+            assert client.get("/api/recurring", headers=HEAD).json()["count"] == 1
+            assert client.get("/api/recurring", headers=HEAD
+                              ).json()["recurring"][0]["active"] is True
+    finally:
+        settings.expense_users = orig
+
+
+def test_deleting_a_rule_keeps_past_expenses_unless_purged():
+    with recurring_env() as expenses:
+        rule_id = client.post("/api/recurring", headers=HEAD, json={
+            "amount": 500, "category": "Bills", "frequency": "daily",
+            "start_date": days_ago(2),
+        }).json()["recurring"]["id"]
+        assert len(expenses.docs) == 3
+
+        # past occurrences are spending that really happened: they stay
+        r = client.delete(f"/api/recurring/{rule_id}", headers=HEAD)
+        assert r.status_code == 200 and r.json()["deleted_expenses"] == 0
+        assert len(expenses.docs) == 3
+        assert client.delete(f"/api/recurring/{rule_id}", headers=HEAD).status_code == 404
+
+    with recurring_env() as expenses:
+        rule_id = client.post("/api/recurring", headers=HEAD, json={
+            "amount": 500, "category": "Bills", "frequency": "daily",
+            "start_date": days_ago(2),
+        }).json()["recurring"]["id"]
+        r = client.delete(f"/api/recurring/{rule_id}?purge=true", headers=HEAD)
+        assert r.status_code == 200 and r.json()["deleted_expenses"] == 3
+        assert expenses.docs == []
+
+
+def test_recurring_validation_and_auth():
+    with recurring_env():
+        assert client.post("/api/recurring", json={
+            "amount": 5, "category": "Food", "frequency": "daily"}).status_code == 401
+        for bad in (
+            {"amount": 0, "category": "Food", "frequency": "daily"},
+            {"amount": 5, "category": "  ", "frequency": "daily"},
+            {"amount": 5, "category": "Food", "frequency": "fortnightly"},
+            {"amount": 5, "category": "Food"},
+            {"amount": 5, "category": "Food", "frequency": "daily",
+             "payment_method": "Cheque"},
+            # an end date before the start date
+            {"amount": 5, "category": "Food", "frequency": "daily",
+             "start_date": "2026-03-10", "end_date": "2026-03-01"},
+        ):
+            assert client.post("/api/recurring", headers=HEAD, json=bad).status_code == 400, bad
+        assert client.patch("/api/recurring/not-an-id", headers=HEAD,
+                            json={"active": False}).status_code == 400
+        # an empty patch is refused rather than silently touching updated_at
+        rule_id = client.post("/api/recurring", headers=HEAD, json={
+            "amount": 5, "category": "Food", "frequency": "daily"}).json()["recurring"]["id"]
+        assert client.patch(f"/api/recurring/{rule_id}", headers=HEAD,
+                            json={}).status_code == 400
+
+
+def test_an_ended_rule_backfills_only_to_its_end_date():
+    with recurring_env() as expenses:
+        body = client.post("/api/recurring", headers=HEAD, json={
+            "amount": 20, "category": "Snacks", "frequency": "daily",
+            "start_date": days_ago(5), "end_date": days_ago(3),
+        }).json()
+        assert body["created_expenses"] == 3  # days 5, 4, 3 ago
+        assert body["recurring"]["next_run"] is None
+        assert sorted(d["occurrence_key"] for d in expenses.docs) == sorted(
+            [days_ago(5), days_ago(4), days_ago(3)])
+
+
+def test_generated_expenses_flow_through_the_normal_list_endpoint():
+    """The whole point of materialising: recurring spend needs no special
+    case in filtering, totals or the UI."""
+    with recurring_env():
+        client.post("/api/recurring", headers=HEAD, json={
+            "amount": 250, "category": "Netflix", "frequency": "daily",
+            "payment_method": "upi", "start_date": days_ago(1),
+        })
+        body = client.get("/api/expenses", headers=HEAD).json()
+        assert body["count"] == 2
+        assert {e["category"] for e in body["expenses"]} == {"Netflix"}
+        assert all(e["recurring_id"] for e in body["expenses"])
+        assert all(e["payment_method"] == "UPI" for e in body["expenses"])
+        # and the payment filter reaches them like any other expense
+        assert client.get("/api/expenses?payment_method=UPI", headers=HEAD
+                          ).json()["count"] == 2

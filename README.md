@@ -13,10 +13,13 @@ app/
 ├── database.py        # AsyncMongoClient lifespan + get_collection dependency
 ├── keepalive.py       # background self-ping so Render's free tier stays awake
 ├── models/expense.py  # ExpenseIn / ExpenseCreated
+├── models/recurring.py # recurring rules + the occurrence calendar maths
 ├── routes/auth.py     # accounts, login sessions, credential resolution
 ├── routes/expenses.py # POST/GET/DELETE /api/expenses
+├── routes/recurring.py # recurring rules + catch-up materialisation
 └── routes/view.py     # GET / -> HTML dashboard
 test_api.py            # smoke test, no DB required
+tests/browser/         # Chromium end-to-end test (needs a built frontend)
 render.yaml            # Render Blueprint: service, env vars, keep-alive
 frontend/              # standalone static dashboard, deploy independently
 ├── index.html
@@ -229,6 +232,53 @@ icon, page lives in `app/static/index.html`):
 A wrong or missing key returns `401`. The key itself is never rendered into
 the page source — the JS reads it from the URL you bookmarked.
 
+### `GET|POST /api/recurring`, `PATCH|DELETE /api/recurring/{id}`
+
+Rent, subscriptions — anything you would otherwise retype. A rule stores the
+intent; the expenses it implies are written into the normal expenses
+collection, so recurring spend flows through every filter, total, chart and
+budget with no special handling.
+
+```bash
+# every month, from today, until further notice
+curl -X POST https://YOUR-APP.onrender.com/api/recurring \
+  -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"amount": 18000, "category": "Rent", "frequency": "monthly"}'
+```
+
+| Field | Notes |
+|---|---|
+| `amount` | > 0, required |
+| `category` | required |
+| `frequency` | `daily`, `weekly` or `monthly` |
+| `start_date` | defaults to today, and is the **anchor**: a monthly rule starting on the 5th runs on the 5th |
+| `end_date` | optional; must not precede `start_date` |
+| `payment_method` | optional, `Cash` or `UPI` |
+
+`PATCH` takes any subset — `{"active": false}` pauses a rule — and an omitted
+field is left alone rather than nulled. `DELETE` keeps the expenses the rule
+already created, because they are spending that really happened; add
+`?purge=true` to remove them too.
+
+**When occurrences are created.** On read, not on a timer. Render's free tier
+stops the process when idle, so a scheduler inside it would miss exactly the
+windows it was meant to cover; instead any read of your expenses first
+materialises whatever the rules owe. Points worth knowing:
+
+- A rule anchored on the 31st runs Jan 31, **Feb 28**, Mar 31 — clamped for
+  short months, never permanently drifted onto the 28th.
+- Occurrences are stored at **noon UTC**, so the intended calendar day
+  survives the dashboard grouping by local day either side of UTC.
+- A back-dated rule fills in at most 60 occurrences per read and converges
+  over the next few, rather than inserting years of history at once.
+- Insertion is idempotent: `(recurring_id, occurrence_key)` is a unique index,
+  so a 15-second poll, a double tap and a primary/secondary failover cannot
+  produce the same expense twice. The database enforces it, not a
+  read-then-write that two concurrent requests could both pass.
+
+Generated expenses carry a `recurring_id`; everything logged by hand or by the
+Shortcut has `null`. The dashboard marks them with a ↻.
+
 ### Meta endpoints
 
 No API key, no database, safe to call from a monitor or a cron:
@@ -342,6 +392,23 @@ pytest test_api.py        # optional
 ```
 
 Generate a key: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`
+
+### Tests
+
+`pytest test_api.py` needs no database — Mongo is faked in-process.
+
+`tests/browser/` is a separate Chromium end-to-end test, for the two things a
+TestClient structurally cannot reach: a real CORS preflight, and a real mouse
+pointer. Both have hidden bugs here before — a method missing from
+`allow_methods`, and a `setPointerCapture` on the bottom nav that retargeted
+every tab click away from its own button (invisible on touch). It starts its
+own servers, so each run gets an empty database:
+
+```bash
+cd frontend && PRIMARY_API_URL=http://127.0.0.1:8124 \
+    SECONDARY_API_URL=http://127.0.0.1:8124 npm run build && cd ..
+python3 tests/browser/test_recurring_ui.py
+```
 
 The app pings Atlas on startup and refuses to boot on a bad URI — in Atlas,
 add your IP (and `0.0.0.0/0` for Render) under **Network Access**.

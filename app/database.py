@@ -36,14 +36,34 @@ async def lifespan(app: FastAPI):
 
 
 async def _ensure_indexes(db) -> None:
-    """Uniqueness for accounts, and expiry for sessions. Logged rather than
-    fatal: a missing index must not take the whole API down on boot."""
+    """Uniqueness for accounts, expiry for sessions, and a lookup index on
+    every collection that is queried by user. Logged rather than fatal: a
+    missing index must not take the whole API down on boot."""
     try:
         await db["users"].create_index("username", unique=True)
         await db["users"].create_index("api_key", unique=True)
         await db["sessions"].create_index("token", unique=True)
         # Mongo deletes a session once expires_at is in the past
         await db["sessions"].create_index("expires_at", expireAfterSeconds=0)
+
+        # Every expense query is find({user}).sort("date", -1), so the
+        # compound index serves the filter and the sort in one go and keeps
+        # the dashboard off a collection scan as rows accumulate.
+        await db[settings.mongodb_collection].create_index([("user", 1), ("date", -1)])
+        # Both of these are read on every dashboard load, one document each.
+        await db["spending_limits"].create_index("user")
+        await db["profiles"].create_index("user")
+
+        # Recurring rules are listed per user, and filtered to the active ones
+        # on the catch-up path.
+        await db["recurring"].create_index([("user", 1), ("active", 1)])
+        # The idempotency guarantee for materialisation: one expense per rule
+        # per occurrence date, enforced by the database rather than by a
+        # read-then-write that two concurrent polls could both pass. Sparse,
+        # so the expenses that carry no occurrence_key are not indexed.
+        await db[settings.mongodb_collection].create_index(
+            [("recurring_id", 1), ("occurrence_key", 1)], unique=True, sparse=True
+        )
     except Exception:
         log.exception("could not create indexes; accounts may allow duplicates")
 
@@ -70,6 +90,12 @@ def get_users_collection() -> AsyncCollection:
     """FastAPI dependency for username/password accounts."""
     assert _client is not None, "lifespan did not run"
     return _client[settings.mongodb_db]["users"]
+
+
+def get_recurring_collection() -> AsyncCollection:
+    """FastAPI dependency for recurring expense rules."""
+    assert _client is not None, "lifespan did not run"
+    return _client[settings.mongodb_db]["recurring"]
 
 
 def get_sessions_collection() -> AsyncCollection:
