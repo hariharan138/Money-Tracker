@@ -148,6 +148,91 @@ try:
      # the sandbox proxy intercepts TLS, so the Google Fonts preconnect
      # fails here and nowhere real. Not an app error.
      ignore = ("favicon", "cert_authority_invalid", "fonts.g")
+     print("\n6. Scrolling with a finger on the nav must not navigate")
+     # Seed enough rows that the page actually scrolls.
+     for n in range(14):
+         page.request.post(f"http://127.0.0.1:{API_PORT}/api/expenses",
+                           headers={"X-API-Key": KEY, "Content-Type": "application/json"},
+                           data={"amount": 10 + n, "category": f"Seed{n}", "payment_method": "UPI"})
+     page.reload(wait_until="networkidle")
+     page.click('[data-tab="transactions"]')
+     page.wait_for_timeout(500)
+
+     scrollable = page.evaluate("document.body.scrollHeight > window.innerHeight + 120")
+     check("page is long enough to scroll", lambda: (_ for _ in ()).throw(
+         AssertionError("page does not scroll; the rest of this section is vacuous")
+     ) if not scrollable else None)
+
+     page.evaluate("window.scrollTo(0, 260)")
+     page.wait_for_timeout(400)
+     before = page.evaluate("window.scrollY")
+
+     box = page.locator(".bottom-nav").bounding_box()
+     start = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+
+     def drag(to_x, to_y, steps=12):
+         page.mouse.move(*start)
+         page.mouse.down()
+         page.mouse.move(to_x, to_y, steps=steps)
+         page.mouse.up()
+         page.wait_for_timeout(500)
+
+     def scroll_drag(dy=-220, settle=8, drift=80):
+         """A real thumb scroll: the finger lands and drifts a few pixels
+         sideways *before* it starts moving down the screen. A straight
+         interpolated diagonal does not reproduce the bug, because its very
+         first sample is already vertical-dominant."""
+         page.mouse.move(*start)
+         page.mouse.down()
+         page.mouse.move(start[0] + settle, start[1] + 2, steps=2)
+         page.mouse.move(start[0] + drift, start[1] + dy, steps=12)
+         page.mouse.up()
+         page.wait_for_timeout(500)
+
+     # Sideways drift first, then the scroll. The old code committed to
+     # "horizontal drag" on that drift and never re-checked, so the release
+     # switched tabs and showTab() threw the page to the top.
+     scroll_drag()
+     check("diagonal scroll did not change tab",
+           lambda: expect(page.locator('[data-panel="transactions"]')).to_have_class(
+               re.compile(r"\bactive\b")))
+     check("diagonal scroll did not jump to the top",
+           lambda: (_ for _ in ()).throw(AssertionError(
+               f"scrollY went {before} -> {page.evaluate('window.scrollY')}"))
+           if page.evaluate("window.scrollY") < before - 20 else None)
+
+     # Straight up: unambiguously a scroll.
+     drag(start[0], start[1] - 200)
+     check("vertical drag did not change tab",
+           lambda: expect(page.locator('[data-panel="transactions"]')).to_have_class(
+               re.compile(r"\bactive\b")))
+
+     print("\n7. A real horizontal swipe still works")
+     page.click('[data-tab="dashboard"]')
+     page.wait_for_timeout(400)
+     box = page.locator(".bottom-nav").bounding_box()
+     start = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+     drag(start[0] - 110, start[1] + 6)   # swipe left -> next tab
+     check("swipe left moves to the next tab",
+           lambda: expect(page.locator('[data-panel="transactions"]')).to_have_class(
+               re.compile(r"\bactive\b")))
+     drag(start[0] + 110, start[1] + 6)   # swipe right -> back
+     check("swipe right moves to the previous tab",
+           lambda: expect(page.locator('[data-panel="dashboard"]')).to_have_class(
+               re.compile(r"\bactive\b")))
+
+     print("\n8. Nav colours match the design (charcoal, not violet)")
+     add_bg = page.evaluate(
+         "getComputedStyle(document.querySelector('.nav-add')).backgroundColor")
+     check("centre button is a flat charcoal disc",
+           lambda: (_ for _ in ()).throw(AssertionError(add_bg))
+           if add_bg != "rgb(28, 33, 40)" else None)
+     active_color = page.evaluate(
+         "getComputedStyle(document.querySelector('.nav-item.nav-active')).color")
+     check("active tab icon is near-black",
+           lambda: (_ for _ in ()).throw(AssertionError(active_color))
+           if active_color != "rgb(21, 25, 34)" else None)
+
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
      check(f"no console/page errors ({len(real_errors)})",
            lambda: (_ for _ in ()).throw(AssertionError(real_errors[0])) if real_errors else None)

@@ -1262,12 +1262,27 @@ $$('[data-tab]').forEach(button => {
 const NAV_TABS = ['dashboard', 'transactions', 'add', 'analytics', 'profile'];
 const nav = $('.bottom-nav');
 const SWIPE_THRESHOLD = 60;
+// Movement needed before the gesture commits to an axis. Below this a touch is
+// still ambiguous, so committing early is what used to turn a scroll into a
+// tab change.
+const AXIS_LOCK_PX = 10;
+// Horizontal has to genuinely dominate to win the lock; a thumb scrolling down
+// always carries some sideways drift.
+const AXIS_BIAS = 1.3;
+// If the page moved during the gesture it was a scroll, whatever the pointer
+// deltas say.
+const SCROLL_TOLERANCE_PX = 8;
 let dragState = null;
 let suppressTabClick = false;
 
 function activeTabName() {
   const active = $$('[data-tab]').find(button => button.classList.contains('nav-active'));
   return active ? active.dataset.tab : 'dashboard';
+}
+
+function resetNavPosition() {
+  nav.style.transition = '';
+  nav.style.transform = 'translateX(-50%)';
 }
 
 nav.addEventListener('pointerdown', event => {
@@ -1277,7 +1292,13 @@ nav.addEventListener('pointerdown', event => {
     startX: event.clientX,
     startY: event.clientY,
     dx: 0,
+    // null until the gesture commits to 'x' (a swipe) or 'y' (a scroll, which
+    // we abandon). Deciding once and sticking to it is the whole point.
+    axis: null,
     dragging: false,
+    // showTab() scrolls to the top, so a swipe misread from a scroll threw the
+    // page to the top mid-scroll. Compared again on release.
+    scrollY: window.scrollY,
   };
   // Capture is claimed in pointermove, once this is actually a drag -- never
   // here. Capturing on pointerdown retargets the *click* that follows to the
@@ -1290,19 +1311,31 @@ nav.addEventListener('pointermove', event => {
   if (!dragState || event.pointerId !== dragState.id) return;
   const dx = event.clientX - dragState.startX;
   const dy = event.clientY - dragState.startY;
-  // Vertical intent → let the page scroll; don't hijack it.
-  if (!dragState.dragging && Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 1.5) {
-    dragState = null;
-    return;
+
+  // Commit to one axis, once, on the first movement big enough to read — then
+  // never reconsider. The old code set `dragging` as soon as |dx| > 4 and only
+  // checked for vertical intent while !dragging, so the few pixels of sideways
+  // drift at the start of any thumb scroll locked the gesture as a swipe
+  // before the vertical test could ever run.
+  if (dragState.axis === null) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < AXIS_LOCK_PX) return;
+    if (Math.abs(dx) > Math.abs(dy) * AXIS_BIAS) {
+      dragState.axis = 'x';
+      dragState.dragging = true;
+      // Now that it is a drag, capture so it survives the pointer leaving the
+      // bar. A drag ends in a retargeted click, which navigates nothing --
+      // and suppressTabClick covers touch, where there is no capture.
+      try { nav.setPointerCapture(event.pointerId); } catch (_) { /* unsupported */ }
+    } else {
+      // Vertical (or ambiguous diagonal) → it's a scroll. Let go of it
+      // entirely, and undo any nudge already applied to the bar.
+      dragState = null;
+      resetNavPosition();
+      return;
+    }
   }
+
   dragState.dx = dx;
-  if (Math.abs(dx) > 4 && !dragState.dragging) {
-    dragState.dragging = true;
-    // Now that it is a drag, capture so it survives the pointer leaving the
-    // bar. A drag ends in a retargeted click, which navigates nothing -- and
-    // suppressTabClick below covers the touch case, where there is no capture.
-    try { nav.setPointerCapture(event.pointerId); } catch (_) { /* unsupported */ }
-  }
   // Rubber-band at the edges so it stays liquid instead of flying away.
   const max = Math.min(nav.offsetWidth * 0.35, 110);
   const tx = dx > max ? max + (dx - max) * 0.3 : (dx < -max ? -max - (dx + max) * 0.3 : dx);
@@ -1312,12 +1345,14 @@ nav.addEventListener('pointermove', event => {
 
 function endNavDrag(event) {
   if (!dragState || event.pointerId !== dragState.id) return;
-  const { dx, dragging } = dragState;
+  const { dx, dragging, scrollY } = dragState;
   dragState = null;
   // Spring back to centre; the transition does the rest.
-  nav.style.transition = '';
-  nav.style.transform = 'translateX(-50%)';
+  resetNavPosition();
   if (!dragging) return;
+  // Last line of defence: if the page scrolled while this gesture was in
+  // flight, it was a scroll. Navigating now would also scroll to the top.
+  if (Math.abs(window.scrollY - scrollY) > SCROLL_TOLERANCE_PX) return;
   suppressTabClick = true;
   const index = NAV_TABS.indexOf(activeTabName());
   // Dragging right reveals what sits to the left, so it goes to the previous
