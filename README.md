@@ -62,6 +62,25 @@ secret in the URL. Treat one-time `/?key=…` links as private.
 Profile), then Share → Add to Home Screen. Do **not** rely on `?key=` in the
 Home Screen URL — the saved key in localStorage is what loads your data.
 
+### One month at a time
+
+Every tab carries the same month strip — `‹ September 2026 ›` with that
+month's total under it — and they all read the one selection. Stepping back a
+month moves the dashboard, the transaction list, the chart and the profile
+figures together; tapping the month name opens a picker with every month that
+has data (and **All time**, if you want the old behaviour). The app opens on
+the current month.
+
+Two things stay anchored to today whatever month you are on, because they
+would be meaningless otherwise: the **Today** figure in Overview, and the
+**Add** tab, which always logs against today.
+
+On **Transactions**, a card above the list totals exactly what is on screen —
+search `food` and it answers with the food total for that month, the number of
+transactions, the average and the largest, plus a chip per category when the
+search spans more than one. **Insights** charts the selected month by day or
+by week, or its whole year by month, and breaks the spend down by category.
+
 ## Android app
 
 `frontend/` doubles as a native Android app via Capacitor — the same HTML/CSS/JS

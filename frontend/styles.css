@@ -707,6 +707,7 @@ body.keyboard-open .bottom-nav { display: none; }
 .chart-wrap {
   height: 200px;
   margin-top: 8px;
+  touch-action: pan-y;   /* scrubbing the chart must not fight page scrolling */
 }
 
 .chart-wrap svg {
@@ -715,16 +716,348 @@ body.keyboard-open .bottom-nav { display: none; }
   overflow: visible;
 }
 
+.chart-grid {
+  stroke: #eef0f3;
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+
+.chart-average {
+  stroke: #ffb02e;
+  stroke-width: 1.2;
+  stroke-dasharray: 5 4;
+  opacity: 0.85;
+}
+
+.chart-average-label {
+  font-size: 8.5px;
+  font-weight: 700;
+  fill: #c98a1c;
+  letter-spacing: 0.2px;
+}
+
+.chart-area {
+  fill: url(#chartArea);
+  animation: chartFade .5s ease both;
+}
+
+.chart-line {
+  fill: none;
+  stroke: url(#chartStroke);
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* pathLength="1" makes the dash maths independent of the real path length */
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: chartDraw .85s cubic-bezier(.22, .68, .32, 1) forwards;
+}
+
+.chart-dot {
+  fill: var(--ink);
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.chart-dot.is-accent { fill: var(--orange); }
+
+.chart-bar {
+  fill: url(#chartBar);
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: chartGrow .5s cubic-bezier(.22, .68, .32, 1) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
+}
+
+.chart-bar.is-accent { fill: url(#chartBarAccent); }
+.chart-bar.is-empty { fill: #e4e6ea; animation-delay: 0ms; }
+
+.chart-axis {
+  font-size: 9px;
+  font-weight: 650;
+  fill: #a0a3a9;
+}
+
+.chart-axis.is-accent { fill: var(--ink); font-weight: 800; }
+
+.chart-cursor-line {
+  stroke: #c9ccd1;
+  stroke-width: 1.2;
+  stroke-dasharray: 4 4;
+}
+
+.chart-cursor-dot { fill: var(--ink); }
+.chart-cursor-core { fill: #fff; }
+.chart-cursor-chip { fill: var(--ink); }
+
 .chart-tooltip {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   fill: #fff;
 }
 
-.chart-value {
-  font-size: 9px;
+.chart-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.chart-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-meta i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.chart-meta .dot-avg { background: var(--orange); }
+.chart-meta .dot-peak { background: var(--ink); }
+
+@keyframes chartDraw { to { stroke-dashoffset: 0; } }
+@keyframes chartFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes chartGrow { from { transform: scaleY(0); opacity: .4; } to { transform: scaleY(1); opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-line { animation: none; stroke-dashoffset: 0; }
+  .chart-area, .chart-bar { animation: none; }
+}
+
+/* —— The month strip: the same control on every tab —— */
+.month-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 6px;
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.month-nav {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 13px;
+  background: #f1f2f5;
+  color: #4a5059;
+  transition: background .15s ease, color .15s ease;
+}
+
+.month-nav:active { background: #e4e6ea; }
+
+.month-nav:disabled {
+  color: #c8cbd1;
+  cursor: default;
+  opacity: .6;
+}
+
+.month-current {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 13px;
+  padding: 4px 6px;
+  background: transparent;
+  text-align: center;
+}
+
+.month-name {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: -0.3px;
+}
+
+.month-amt {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.month-bar.is-all .month-name { color: var(--ink); }
+
+.month-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  margin-bottom: 4px;
+  overflow-y: auto;
+}
+
+.month-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  border-radius: 14px;
+  padding: 11px 14px;
+  background: #f4f5f7;
+  text-align: left;
+}
+
+.month-option.is-selected {
+  background: var(--charcoal);
+  color: #fff;
+}
+
+.month-option-main b {
+  display: block;
+  font-size: 13.5px;
   font-weight: 700;
-  fill: #151922;
+}
+
+.month-option-main small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.month-option.is-selected .month-option-main small { color: #b9bdc4; }
+
+.month-option-total {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+/* —— Transactions: the total for what is on screen —— */
+.tx-summary {
+  margin: 0 0 20px;
+  padding: 18px 18px 16px;
+  border-radius: 22px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.tx-summary.is-search {
+  background: linear-gradient(160deg, #1c2128, #151922);
+  color: #fff;
+}
+
+.tx-summary-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.tx-summary-head em {
+  flex-shrink: 0;
+  font-style: normal;
+  font-size: 11px;
+}
+
+.tx-summary.is-search .tx-summary-head { color: #b9bdc4; }
+
+.tx-summary > strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -1.2px;
+}
+
+.tx-summary-scope {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.tx-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.tx-summary-grid div {
+  padding: 9px 10px;
+  border-radius: 13px;
+  background: #f4f5f7;
+}
+
+.tx-summary.is-search .tx-summary-grid div { background: rgba(255, 255, 255, 0.08); }
+
+.tx-summary-grid small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.tx-summary.is-search .tx-summary-grid small { color: #a8acb3; }
+
+.tx-summary-grid b {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: -0.3px;
+}
+
+.tx-summary-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.tx-summary-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f1f2f5;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.tx-summary.is-search .tx-summary-cat {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.tx-summary-cat b { font-weight: 750; }
+
+/* Share-of-spend bar under each category row on Insights. */
+.share-track {
+  height: 4px;
+  margin-top: 7px;
+  border-radius: 999px;
+  background: #eceef1;
+  overflow: hidden;
+}
+
+.share-track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2b3341, #151922);
 }
 
 .analytics-stats {
@@ -1108,7 +1441,11 @@ body.keyboard-open .bottom-nav { display: none; }
 .budget-remaining {
   display: flex;
   align-items: center;
-  gap: 12px;
+  /* Both columns refuse to shrink below their own amount, so a long limit
+     wraps the spent column onto its own row instead of running the total
+     underneath it. */
+  flex-wrap: wrap;
+  gap: 10px 12px;
   margin-bottom: 4px;
   padding: 14px;
   border-radius: 16px;
@@ -1126,26 +1463,31 @@ body.keyboard-open .bottom-nav { display: none; }
   color: var(--ink);
 }
 
-.budget-remaining-text { flex: 1; min-width: 0; }
+.budget-remaining-text { flex: 1 1 auto; }
 
 .budget-remaining-text span {
   display: block;
   color: var(--muted);
   font-size: 11.5px;
   font-weight: 600;
+  /* wrapping here made the row two lines tall and ran the amount under the
+     spent column beside it */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .budget-remaining-text strong {
   display: block;
   margin-top: 3px;
+  white-space: nowrap;
   font-size: 19px;
   font-weight: 800;
   letter-spacing: -0.4px;
 }
 
 .budget-remaining-spent {
-  flex-shrink: 0;
-  width: 132px;
+  flex: 1 1 132px;
   text-align: right;
 }
 
@@ -1159,6 +1501,7 @@ body.keyboard-open .bottom-nav { display: none; }
 .budget-remaining-spent strong {
   display: block;
   margin: 2px 0 6px;
+  white-space: nowrap;
   font-size: 13px;
   font-weight: 750;
 }

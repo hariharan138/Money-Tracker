@@ -63,7 +63,10 @@ let recurring = [];
 // Which credential the once-per-login side data (identity, limit, avatar,
 // recurring rules) was loaded for. Keeps that data off the 15s poll.
 let sideDataKey = null;
-const state = { preset: 'all', payment: 'all', q: '', sort: 'newest', chartRange: 'month' };
+// `month` is the one the whole app is looking at (ALL_MONTHS = no month
+// filter). Every tab reads it, so switching month switches the app.
+const ALL_MONTHS = 'all';
+const state = { preset: 'month', payment: 'all', q: '', sort: 'newest', chartRange: 'days', month: currentMonthKey() };
 
 function dateOf(value) {
   if (value instanceof Date) return value;
@@ -84,6 +87,84 @@ function todayKey() {
   return dayKey(new Date());
 }
 
+/* —— Months ——————————————————————————————————————————————————————
+   One selected month drives every tab. Keys are 'YYYY-MM', which sorts and
+   compares correctly as a plain string, so no Date maths is needed to tell
+   which of two months came first. */
+
+function monthKeyOf(value) {
+  const d = value instanceof Date ? value : dateOf(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function currentMonthKey() {
+  return monthKeyOf(new Date());
+}
+
+/** Local [start, end] of a month key — end is the last millisecond of it. */
+function monthBounds(key) {
+  const [y, m] = key.split('-').map(Number);
+  return [new Date(y, m - 1, 1), new Date(y, m, 0, 23, 59, 59, 999)];
+}
+
+function shiftMonthKey(key, delta) {
+  const [y, m] = key.split('-').map(Number);
+  return monthKeyOf(new Date(y, m - 1 + delta, 1));
+}
+
+function monthLabel(key, { short = false } = {}) {
+  if (!key || key === ALL_MONTHS) return 'All time';
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: short ? 'short' : 'long', year: 'numeric' });
+}
+
+/** Just the month, for sentences that already carry the year ("in September"). */
+function monthName(key) {
+  if (!key || key === ALL_MONTHS) return 'all time';
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long' });
+}
+
+function inMonth(item, key = state.month) {
+  return key === ALL_MONTHS || monthKeyOf(item.date) === key;
+}
+
+/** Everything in the selected month, before any search / payment filter. */
+function monthExpenses(key = state.month) {
+  return key === ALL_MONTHS ? expenses : expenses.filter(item => inMonth(item, key));
+}
+
+/** Months that actually have expenses, newest first; today's is always in. */
+function monthsWithData() {
+  const keys = new Set(expenses.map(item => monthKeyOf(item.date)).filter(Boolean));
+  keys.add(currentMonthKey());
+  if (state.month && state.month !== ALL_MONTHS) keys.add(state.month);
+  return [...keys].sort().reverse();
+}
+
+/** You can step back as far as there is data, and forward no further than now. */
+function monthNavBounds() {
+  const months = monthsWithData();
+  return { oldest: months.at(-1), newest: currentMonthKey() };
+}
+
+/** Day-relative presets only mean something when today is inside the window. */
+function presetAllowed(preset) {
+  return preset === 'month' || state.month === ALL_MONTHS || state.month === currentMonthKey();
+}
+
+function setMonth(key) {
+  if (state.month === key) return;
+  state.month = key;
+  if (!presetAllowed(state.preset)) {
+    state.preset = 'month';
+    const select = $('#preset');
+    if (select) select.value = 'month';
+  }
+  render();
+}
+
 function sum(items) {
   return items.reduce((total, item) => total + Number(item.amount || 0), 0);
 }
@@ -101,18 +182,29 @@ function setStatus(text, kind = 'ok') {
   $('#status').className = `sync-status ${kind}`;
 }
 
-function range() {
+/** The date window on screen: the selected month, narrowed by the preset. */
+function activeWindow() {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (state.preset === 'today') return today;
-  if (state.preset === '7') return new Date(today - 6 * 864e5);
-  if (state.preset === '30') return new Date(today - 29 * 864e5);
-  if (state.preset === 'month') return new Date(now.getFullYear(), now.getMonth(), 1);
-  return null;
+  let from = null;
+  let to = null;
+  if (state.month !== ALL_MONTHS) [from, to] = monthBounds(state.month);
+  if (presetAllowed(state.preset)) {
+    const starts = { today, 7: new Date(today - 6 * 864e5), 30: new Date(today - 29 * 864e5) };
+    const start = starts[state.preset];
+    // the later of the two: a preset can only ever narrow the month
+    if (start && (!from || start > from)) from = start;
+  }
+  return { from, to };
+}
+
+function matchesQuery(item, query) {
+  return !query || [item.category, item.description, item.notes, item.payment_method]
+    .join(' ').toLowerCase().includes(query);
 }
 
 function filtered() {
-  const from = range();
+  const { from, to } = activeWindow();
   const query = state.q.trim().toLowerCase();
   const order = {
     newest: (a, b) => dateOf(b.date) - dateOf(a.date),
@@ -122,10 +214,30 @@ function filtered() {
   }[state.sort];
 
   return expenses.filter(item => {
-    if (from && dateOf(item.date) < from) return false;
+    const d = dateOf(item.date);
+    if (from && d < from) return false;
+    if (to && d > to) return false;
     if (state.payment !== 'all' && (item.payment_method || '').toLowerCase() !== state.payment) return false;
-    return !query || [item.category, item.description, item.notes, item.payment_method].join(' ').toLowerCase().includes(query);
+    return matchesQuery(item, query);
   }).sort(order);
+}
+
+/** Totals for whatever the Transactions tab is currently showing. */
+function summarise(items) {
+  const amounts = items.map(item => Number(item.amount) || 0);
+  const total = amounts.reduce((a, b) => a + b, 0);
+  const byCategory = [...items.reduce((map, item) => {
+    const name = (item.category || 'Expense').trim() || 'Expense';
+    map.set(name, (map.get(name) || 0) + (Number(item.amount) || 0));
+    return map;
+  }, new Map())].sort((a, b) => b[1] - a[1]);
+  return {
+    total,
+    count: items.length,
+    average: items.length ? total / items.length : 0,
+    largest: amounts.length ? Math.max(...amounts) : 0,
+    byCategory,
+  };
 }
 
 function greetingForNow() {
@@ -172,45 +284,94 @@ function row(item, compact = false) {
   </article>`;
 }
 
-function chartBuckets() {
-  const now = new Date();
-  if (state.chartRange === 'week') {
-    return [...Array(7)].map((_, index) => {
-      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (6 - index));
-      const key = dayKey(day);
-      return {
-        label: day.toLocaleDateString(undefined, { weekday: 'narrow' }),
-        total: sum(expenses.filter(item => dayKey(item.date) === key)),
-      };
-    });
+/** The month the Insights tab charts; All time falls back to the live one. */
+function chartScopeKey() {
+  return state.month === ALL_MONTHS ? currentMonthKey() : state.month;
+}
+
+function chartScopeLabel() {
+  const key = chartScopeKey();
+  return state.chartRange === 'year' ? key.split('-')[0] : monthLabel(key);
+}
+
+/** Everything inside the window the chart is drawing. */
+function chartScopeExpenses() {
+  const key = chartScopeKey();
+  if (state.chartRange === 'year') {
+    const year = Number(key.split('-')[0]);
+    return expenses.filter(item => dateOf(item.date).getFullYear() === year);
   }
+  return expenses.filter(item => monthKeyOf(item.date) === key);
+}
+
+/** Spend per local day, built once per chart instead of once per bucket. */
+function totalsByDay() {
+  const map = new Map();
+  for (const item of expenses) {
+    const key = dayKey(item.date);
+    if (key) map.set(key, (map.get(key) || 0) + (Number(item.amount) || 0));
+  }
+  return map;
+}
+
+/* Every range is anchored to the selected month: days of it, weeks of it, or
+   the twelve months of its year. Nothing here is relative to "now", so a past
+   month charts exactly as the live one does. */
+function chartBuckets() {
+  const key = chartScopeKey();
+  const [year, month] = key.split('-').map(Number);
+  const today = todayKey();
 
   if (state.chartRange === 'year') {
-    return [...Array(12)].map((_, month) => {
-      const total = sum(expenses.filter(item => {
-        const d = dateOf(item.date);
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === month;
-      }));
+    const byMonth = new Map();
+    for (const item of expenses) {
+      const k = monthKeyOf(item.date);
+      if (k) byMonth.set(k, (byMonth.get(k) || 0) + (Number(item.amount) || 0));
+    }
+    return [...Array(12)].map((_, index) => {
+      const date = new Date(year, index, 1);
       return {
-        label: new Date(now.getFullYear(), month, 1).toLocaleDateString(undefined, { month: 'narrow' }),
-        total,
+        label: date.toLocaleDateString(undefined, { month: 'narrow' }),
+        full: date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+        total: byMonth.get(`${year}-${String(index + 1).padStart(2, '0')}`) || 0,
+        // the month you are on is highlighted, so the strip doubles as a map
+        accent: state.month !== ALL_MONTHS && index === month - 1,
       };
     });
   }
 
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const step = Math.max(1, Math.ceil(daysInMonth / 7));
-  const buckets = [];
-  for (let start = 1; start <= daysInMonth; start += step) {
-    const end = Math.min(daysInMonth, start + step - 1);
-    const total = sum(expenses.filter(item => {
-      const d = dateOf(item.date);
-      const day = d.getDate();
-      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && day >= start && day <= end;
-    }));
-    buckets.push({ label: String(start), total });
+  const byDay = totalsByDay();
+  const days = new Date(year, month, 0).getDate();
+  const dayKeyFor = day => `${key}-${String(day).padStart(2, '0')}`;
+  const dayTotal = day => byDay.get(dayKeyFor(day)) || 0;
+
+  if (state.chartRange === 'weeks') {
+    const shortMonth = new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: 'short' });
+    const buckets = [];
+    for (let start = 1; start <= days; start += 7) {
+      const end = Math.min(days, start + 6);
+      let total = 0;
+      for (let day = start; day <= end; day += 1) total += dayTotal(day);
+      buckets.push({
+        label: `W${buckets.length + 1}`,
+        full: `${start}–${end} ${shortMonth}`,
+        total,
+        accent: today >= dayKeyFor(start) && today <= dayKeyFor(end),
+      });
+    }
+    return buckets;
   }
-  return buckets;
+
+  return [...Array(days)].map((_, index) => {
+    const day = index + 1;
+    return {
+      // one label every 5 days: 31 of them overlap into a smudge
+      label: day === 1 || day % 5 === 0 ? String(day) : '',
+      full: new Date(year, month - 1, day).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+      total: dayTotal(day),
+      accent: dayKeyFor(day) === today,
+    };
+  });
 }
 
 /** Short rupee label that fits the chart badges. */
@@ -221,65 +382,205 @@ function compactINR(value) {
   return `₹${Math.round(amount)}`;
 }
 
+const CHART = { w: 320, h: 200, padX: 16, padTop: 34, padBottom: 24 };
+
+/* Catmull-Rom control points, so the line curves through every reading rather
+   than cornering at it. Control points are clamped to the plot: a low tension
+   still overshoots past a spike, and an overshoot below the baseline drew the
+   area fill through the axis labels. */
+function smoothPath(points, top, bottom) {
+  if (!points.length) return '';
+  if (points.length === 1) return `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  const clamp = y => Math.min(bottom, Math.max(top, y));
+  const tension = 0.2;
+  let d = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) * tension;
+    const c1y = clamp(p1.y + (p2.y - p0.y) * tension);
+    const c2x = p2.x - (p3.x - p1.x) * tension;
+    const c2y = clamp(p2.y - (p3.y - p1.y) * tension);
+    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
 function renderChart() {
+  const wrap = $('#trend');
+  const metaEl = $('#chartMeta');
+  if (!wrap) return;
+
   const buckets = chartBuckets();
-  if (!buckets.length) {
-    $('#trend').innerHTML = '<div class="empty">No spending data yet.</div>';
+  const spent = buckets.reduce((total, bucket) => total + bucket.total, 0);
+  if (!buckets.length || spent <= 0) {
+    wrap.innerHTML = `<div class="empty">Nothing recorded for ${escapeHtml(chartScopeLabel())}.</div>`;
+    if (metaEl) metaEl.textContent = '';
     return;
   }
 
-  const max = Math.max(...buckets.map(b => b.total), 1);
-  const w = 320;
-  const h = 200;
-  const padX = 18;
-  const padTop = 36;
-  const padBottom = 28;
+  const { w, h, padX, padTop, padBottom } = CHART;
   const chartH = h - padTop - padBottom;
   const chartW = w - padX * 2;
-  const points = buckets.map((bucket, index) => {
-    const x = padX + (buckets.length === 1 ? chartW / 2 : (index / (buckets.length - 1)) * chartW);
-    const y = padTop + chartH - (bucket.total / max) * chartH;
-    return { ...bucket, x, y };
-  });
+  const baseY = h - padBottom;
+  const max = Math.max(...buckets.map(bucket => bucket.total));
+  const bars = state.chartRange !== 'days';
+  const slot = chartW / buckets.length;
+  const step = buckets.length > 1 ? chartW / (buckets.length - 1) : 0;
 
-  const line = points.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const area = `${line} L${points.at(-1).x.toFixed(1)},${(h - padBottom).toFixed(1)} L${points[0].x.toFixed(1)},${(h - padBottom).toFixed(1)} Z`;
-  const peak = points.reduce((best, p) => (p.total >= best.total ? p : best), points[0]);
-  const peakLabel = compactINR(peak.total);
-  const peakWidth = Math.max(52, peakLabel.length * 7.2 + 16);
-  const peakX = Math.min(Math.max(peak.x - peakWidth / 2, 4), w - peakWidth - 4);
-  const peakY = Math.max(peak.y - 30, 4);
+  const points = buckets.map((bucket, index) => ({
+    ...bucket,
+    index,
+    x: bars
+      ? padX + slot * (index + 0.5)
+      : (buckets.length === 1 ? padX + chartW / 2 : padX + step * index),
+    y: baseY - (bucket.total / max) * chartH,
+  }));
+  const peak = points.reduce((best, point) => (point.total >= best.total ? point : best), points[0]);
 
-  const valueLabels = points
-    .filter(p => p.total > 0 && p !== peak)
-    .map(p => {
-      const label = compactINR(p.total);
-      return `<text class="chart-value" x="${p.x.toFixed(1)}" y="${Math.max(p.y - 10, 12).toFixed(1)}" text-anchor="middle">${label}</text>`;
-    })
+  const grid = [0, 0.5, 1]
+    .map(t => `<line class="chart-grid" x1="${padX - 4}" y1="${(padTop + chartH * t).toFixed(1)}" x2="${(w - padX + 4).toFixed(1)}" y2="${(padTop + chartH * t).toFixed(1)}"/>`)
     .join('');
 
-  $('#trend').innerHTML = `
-    <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Spending chart">
+  const average = spent / buckets.length;
+  const averageY = baseY - (average / max) * chartH;
+  const averageLine = `
+    <line class="chart-average" x1="${padX - 4}" y1="${averageY.toFixed(1)}" x2="${(w - padX + 4).toFixed(1)}" y2="${averageY.toFixed(1)}"/>
+    <text class="chart-average-label" x="${(w - padX + 4).toFixed(1)}" y="${(averageY - 4).toFixed(1)}" text-anchor="end">avg ${compactINR(average)}</text>`;
+
+  let marks;
+  if (bars) {
+    const barW = Math.max(7, Math.min(26, slot - 8));
+    marks = points.map(point => {
+      const empty = point.total <= 0;
+      const height = empty ? 3 : Math.max(baseY - point.y, 4);
+      const y = empty ? baseY - 3 : baseY - height;
+      return `<rect class="chart-bar${point.accent ? ' is-accent' : ''}${empty ? ' is-empty' : ''}"
+        x="${(point.x - barW / 2).toFixed(1)}" y="${y.toFixed(1)}"
+        width="${barW.toFixed(1)}" height="${height.toFixed(1)}"
+        rx="${Math.min(barW / 2, 7).toFixed(1)}" style="--i:${point.index}"/>`;
+    }).join('');
+  } else {
+    const line = smoothPath(points, padTop, baseY);
+    const area = `${line} L${points.at(-1).x.toFixed(1)},${baseY} L${points[0].x.toFixed(1)},${baseY} Z`;
+    const dots = points
+      .filter(point => point.total > 0 && (point.accent || point === peak))
+      .map(point => `<circle class="chart-dot${point.accent ? ' is-accent' : ''}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4"/>`)
+      .join('');
+    marks = `<path class="chart-area" d="${area}"/>
+      <path class="chart-line" d="${line}" pathLength="1"/>
+      ${dots}`;
+  }
+
+  const axis = points
+    .filter(point => point.label)
+    .map(point => `<text class="chart-axis${point.accent ? ' is-accent' : ''}" x="${point.x.toFixed(1)}" y="${(h - 5).toFixed(1)}" text-anchor="middle">${escapeHtml(point.label)}</text>`)
+    .join('');
+
+  wrap.innerHTML = `
+    <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Spending for ${escapeHtml(chartScopeLabel())}">
       <defs>
-        <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#151922" stop-opacity="0.18"/>
-          <stop offset="100%" stop-color="#151922" stop-opacity="0"/>
+        <linearGradient id="chartArea" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffb02e" stop-opacity="0.42"/>
+          <stop offset="60%" stop-color="#ffb02e" stop-opacity="0.10"/>
+          <stop offset="100%" stop-color="#ffb02e" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="chartStroke" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#2b3341"/>
+          <stop offset="100%" stop-color="#151922"/>
+        </linearGradient>
+        <linearGradient id="chartBar" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#2b3341"/>
+          <stop offset="100%" stop-color="#151922"/>
+        </linearGradient>
+        <linearGradient id="chartBarAccent" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffc260"/>
+          <stop offset="100%" stop-color="#ffb02e"/>
         </linearGradient>
       </defs>
-      <path d="${area}" fill="url(#chartFill)"/>
-      <path d="${line}" fill="none" stroke="#151922" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-      <line x1="${peak.x}" y1="${padTop}" x2="${peak.x}" y2="${h - padBottom}" stroke="#c9ccd1" stroke-width="1.2" stroke-dasharray="4 4"/>
-      <circle cx="${peak.x}" cy="${peak.y}" r="5" fill="#151922"/>
-      <circle cx="${peak.x}" cy="${peak.y}" r="2.5" fill="#fff"/>
-      ${valueLabels}
-      <rect x="${peakX}" y="${peakY}" width="${peakWidth}" height="22" rx="8" fill="#151922"/>
-      <text class="chart-tooltip" x="${peakX + peakWidth / 2}" y="${peakY + 15}" text-anchor="middle">${peakLabel}</text>
-      ${points.map(p => `<text x="${p.x}" y="${h - 6}" text-anchor="middle" fill="#a0a3a9" font-size="9" font-weight="600">${escapeHtml(p.label)}</text>`).join('')}
+      ${grid}
+      ${averageLine}
+      ${marks}
+      ${axis}
+      <g id="chartCursor" class="chart-cursor"></g>
     </svg>`;
+
+  const svg = wrap.querySelector('svg');
+
+  function cursorMarkup(point) {
+    const label = `${point.full} · ${INR.format(point.total)}`;
+    const width = Math.max(78, label.length * 5.4 + 20);
+    const x = Math.min(Math.max(point.x - width / 2, 2), w - width - 2);
+    const top = point.total > 0 ? point.y : baseY;
+    const y = Math.max(top - 28, 2);
+    return `
+      ${bars ? '' : `<line class="chart-cursor-line" x1="${point.x.toFixed(1)}" y1="${(padTop - 6).toFixed(1)}" x2="${point.x.toFixed(1)}" y2="${baseY}"/>
+      <circle class="chart-cursor-dot" cx="${point.x.toFixed(1)}" cy="${top.toFixed(1)}" r="5.5"/>
+      <circle class="chart-cursor-core" cx="${point.x.toFixed(1)}" cy="${top.toFixed(1)}" r="2.4"/>`}
+      <rect class="chart-cursor-chip" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${width.toFixed(1)}" height="22" rx="9"/>
+      <text class="chart-tooltip" x="${(x + width / 2).toFixed(1)}" y="${(y + 15).toFixed(1)}" text-anchor="middle">${escapeHtml(label)}</text>`;
+  }
+
+  const cursor = svg.querySelector('#chartCursor');
+  const showPoint = point => { cursor.innerHTML = cursorMarkup(point); };
+  showPoint(peak);   // at rest the chart calls out its own peak
+
+  /* getScreenCTM rather than the bounding box: the SVG is letterboxed inside
+     .chart-wrap whenever the card is not exactly 320:200, and a bounding-box
+     mapping put the readout on the wrong day near the edges. */
+  const localX = event => {
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return null;
+    const origin = svg.createSVGPoint();
+    origin.x = event.clientX;
+    origin.y = event.clientY;
+    return origin.matrixTransform(ctm.inverse()).x;
+  };
+
+  const track = event => {
+    const x = localX(event);
+    if (x == null) return;
+    const nearest = points.reduce((best, point) => (Math.abs(point.x - x) < Math.abs(best.x - x) ? point : best), points[0]);
+    showPoint(nearest);
+  };
+
+  svg.addEventListener('pointerdown', track);
+  svg.addEventListener('pointermove', event => {
+    // only drag-scrub with a finger; a hovering mouse should track freely
+    if (event.pointerType === 'mouse' || event.pressure > 0 || event.buttons) track(event);
+  });
+  svg.addEventListener('pointerleave', () => showPoint(peak));
+  svg.addEventListener('pointercancel', () => showPoint(peak));
+
+  if (metaEl) {
+    const per = { days: 'a day', weeks: 'a week', year: 'a month' }[state.chartRange];
+    metaEl.innerHTML = `<span><i class="dot-avg"></i>Avg ${escapeHtml(compactINR(average))} ${per}</span>`
+      + `<span><i class="dot-peak"></i>Peak ${escapeHtml(compactINR(peak.total))} · ${escapeHtml(peak.full)}</span>`;
+  }
 }
 
-function preferredPayment() {
-  const counts = expenses.reduce((acc, item) => {
+/** Category totals for the charted window, biggest first. */
+function categoryBreakdown() {
+  const items = chartScopeExpenses();
+  const total = sum(items);
+  const map = new Map();
+  for (const item of items) {
+    const name = (item.category || 'Expense').trim() || 'Expense';
+    const entry = map.get(name) || { name, total: 0, count: 0 };
+    entry.total += Number(item.amount) || 0;
+    entry.count += 1;
+    map.set(name, entry);
+  }
+  return {
+    total,
+    rows: [...map.values()].sort((a, b) => b.total - a.total),
+  };
+}
+
+function preferredPayment(items = expenses) {
+  const counts = items.reduce((acc, item) => {
     const method = (item.payment_method || '').trim() || '—';
     acc[method] = (acc[method] || 0) + 1;
     return acc;
@@ -293,9 +594,17 @@ function connectedUserName() {
   return named || '';
 }
 
+function daysInMonth(key) {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m, 0).getDate();
+}
+
 function daysInCurrentMonth() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return daysInMonth(currentMonthKey());
+}
+
+function spendInMonth(key) {
+  return sum(monthExpenses(key));
 }
 
 function spendInSpan(from, to) {
@@ -303,12 +612,6 @@ function spendInSpan(from, to) {
     const d = dateOf(item.date);
     return !Number.isNaN(d.getTime()) && d >= from && d <= to;
   }));
-}
-
-/** Spend so far this calendar month (local). */
-function monthSpend() {
-  const now = new Date();
-  return spendInSpan(new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59));
 }
 
 /** Spend so far today (local). */
@@ -327,20 +630,12 @@ function yesterdaySpend() {
   );
 }
 
-/** Full spend in the previous calendar month (local). */
-function lastMonthSpend() {
-  const now = new Date();
-  return spendInSpan(
-    new Date(now.getFullYear(), now.getMonth() - 1, 1),
-    new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999),
-  );
-}
-
 /** "↑ 12% from last month" style delta line, colored by direction. */
 function deltaLine(curr, prev, suffix) {
   if (prev <= 0) {
+    // the suffix reads "from August", which needs no "vs" in front of it
     return curr > 0
-      ? `<span class="delta up">↑ New vs ${suffix}</span>`
+      ? `<span class="delta up">↑ New ${suffix}</span>`
       : `<span class="delta flat">— 0% ${suffix}</span>`;
   }
   const pct = Math.round(((curr - prev) / prev) * 100);
@@ -412,16 +707,19 @@ function renderBudget() {
   section.hidden = false;
 
   const now = new Date();
-  const days = daysInCurrentMonth();
-  const dayOfMonth = now.getDate();
+  // The limit is a monthly one, so it is read against the month on screen.
+  // "All time" has no month to compare, so it falls back to the live one.
+  const key = state.month === ALL_MONTHS ? currentMonthKey() : state.month;
+  const live = key === currentMonthKey();
+  const days = daysInMonth(key);
   const dayTarget = monthlyLimit / days;
   const weekStart = weekStartKey();
   const weekDayCount = Math.max(1, Math.min(7, Math.floor((now - new Date(weekStart + 'T00:00:00')) / 864e5) + 1));
   const weekTarget = (monthlyLimit / 4.33) * (weekDayCount / 7);
 
-  const spent = { month: monthSpend(), today: todaySpend(), week: weekSpend() };
+  const spent = { month: spendInMonth(key), today: todaySpend(), week: weekSpend() };
 
-  const alert = budgetAlert(spent.month);
+  const alert = live ? budgetAlert(spent.month) : null;
   const alertEl = $('#budgetAlert');
   if (alert) {
     alertEl.hidden = false;
@@ -434,15 +732,20 @@ function renderBudget() {
 
   const remaining = Math.max(0, monthlyLimit - spent.month);
   const usedPct = monthlyLimit > 0 ? Math.min(100, (spent.month / monthlyLimit) * 100) : 0;
+  $('#budgetRemainingLabel').textContent = live ? 'Remaining' : `Left in ${monthName(key)}`;
   $('#budgetRemaining').textContent = INR.format(remaining);
   $('#budgetSpentFrac').textContent = `${INR.format(spent.month)} / ${INR.format(monthlyLimit)}`;
   $('#budgetSpentBar').style.width = `${usedPct}%`;
   $('#budgetSpentPct').textContent = `${Math.round(usedPct)}% used`;
 
-  $('#budgetBars').innerHTML =
-    budgetRow('This week', spent.week, weekTarget, 'green') +
-    budgetRow('Today', spent.today, dayTarget, 'orange') +
-    budgetRow('This month', spent.month, monthlyLimit, 'ink');
+  // Today and this week only exist inside the live month; a past one gets the
+  // comparison that does make sense there — its daily average against target.
+  $('#budgetBars').innerHTML = live
+    ? budgetRow('This week', spent.week, weekTarget, 'green')
+      + budgetRow('Today', spent.today, dayTarget, 'orange')
+      + budgetRow('This month', spent.month, monthlyLimit, 'ink')
+    : budgetRow('Daily average', spent.month / days, dayTarget, 'green')
+      + budgetRow(monthLabel(key), spent.month, monthlyLimit, 'ink');
 }
 
 function openLimitModal() {
@@ -903,37 +1206,145 @@ function updateProfileIdentity() {
   if (avatarSep) avatarSep.hidden = !hasPhoto;
 }
 
-/** Is this expense inside the range the Analytics tab is showing? */
-function inChartWindow(item) {
-  const now = new Date();
-  const d = dateOf(item.date);
-  if (state.chartRange === 'week') return d >= new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
-  if (state.chartRange === 'year') return d.getFullYear() === now.getFullYear();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+/* —— The month strip that every tab carries ——————————————————— */
+
+const CHEVRON = dir => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M${dir < 0 ? '15 6l-6 6 6 6' : '9 6l6 6-6 6'}"/></svg>`;
+
+function renderMonthBars() {
+  const bars = $$('[data-month-bar]');
+  if (!bars.length) return;
+  const key = state.month;
+  const isAll = key === ALL_MONTHS;
+  const { oldest, newest } = monthNavBounds();
+  const items = monthExpenses();
+  const count = items.length;
+  const html = `
+    <button class="month-nav" type="button" data-month-step="-1" ${isAll || key <= oldest ? 'disabled' : ''} aria-label="Previous month">${CHEVRON(-1)}</button>
+    <button class="month-current" type="button" data-month-open aria-label="Choose a month">
+      <span class="month-name">${escapeHtml(monthLabel(key))}</span>
+      <span class="month-amt">${INR.format(sum(items))} · ${count} transaction${count === 1 ? '' : 's'}</span>
+    </button>
+    <button class="month-nav" type="button" data-month-step="1" ${isAll || key >= newest ? 'disabled' : ''} aria-label="Next month">${CHEVRON(1)}</button>`;
+  bars.forEach(bar => {
+    bar.className = `month-bar${isAll ? ' is-all' : ''}`;
+    bar.innerHTML = html;
+  });
 }
 
-function chartWindowTotal() {
-  return sum(expenses.filter(inChartWindow));
+function renderMonthList() {
+  const list = $('#monthList');
+  if (!list) return;
+  const option = (key, name, meta, total) => `
+    <button class="month-option${state.month === key ? ' is-selected' : ''}" type="button" data-month-pick="${escapeHtml(key)}">
+      <span class="month-option-main">
+        <b>${escapeHtml(name)}</b>
+        <small>${escapeHtml(meta)}</small>
+      </span>
+      <span class="month-option-total">${INR.format(total)}</span>
+    </button>`;
+  const months = monthsWithData().map(key => {
+    const items = monthExpenses(key);
+    return option(key, monthLabel(key), `${items.length} transaction${items.length === 1 ? '' : 's'}`, sum(items));
+  }).join('');
+  list.innerHTML = months
+    + option(ALL_MONTHS, 'All time', `${expenses.length} transaction${expenses.length === 1 ? '' : 's'}`, sum(expenses));
+}
+
+function openMonthModal() {
+  renderMonthList();
+  $('#monthModal').hidden = false;
+}
+
+function closeMonthModal() {
+  $('#monthModal').hidden = true;
+}
+
+/* —— Transactions: the total for whatever is on screen ———————— */
+
+function renderTxSummary(items) {
+  const el = $('#txSummary');
+  if (!el) return;
+  const { total, count, average, largest, byCategory } = summarise(items);
+  const query = state.q.trim();
+  const scope = state.month === ALL_MONTHS ? 'all time' : monthLabel(state.month);
+  const windowLabel = { today: 'today', 7: 'last 7 days', 30: 'last 30 days' }[state.preset];
+  const where = windowLabel && presetAllowed(state.preset) ? `${scope} · ${windowLabel}` : scope;
+
+  if (!count) {
+    el.innerHTML = `<p class="tx-summary-head"><span>${query ? `No match for “${escapeHtml(query)}”` : 'Nothing here yet'}</span></p>
+      <strong>${INR.format(0)}</strong>
+      <p class="tx-summary-scope">${escapeHtml(where)}</p>`;
+    el.classList.toggle('is-search', Boolean(query));
+    return;
+  }
+
+  // A search is the case this card exists for: "food" should answer with one
+  // number, then show which categories made it up.
+  const chips = byCategory.slice(0, 4).map(([name, amount]) => `
+    <span class="tx-summary-cat"><i>${icons[name.toLowerCase()] || '🏷️'}</i>${escapeHtml(name)}<b>${INR.format(amount)}</b></span>`).join('');
+
+  el.innerHTML = `
+    <p class="tx-summary-head">
+      <span>${query ? `Total for “${escapeHtml(query)}”` : 'Total'}</span>
+      <em>${escapeHtml(where)}</em>
+    </p>
+    <strong>${INR.format(total)}</strong>
+    <div class="tx-summary-grid">
+      <div><small>Transactions</small><b>${count}</b></div>
+      <div><small>Average</small><b>${INR.format(average)}</b></div>
+      <div><small>Largest</small><b>${INR.format(largest)}</b></div>
+    </div>
+    ${byCategory.length > 1 ? `<div class="tx-summary-cats">${chips}</div>` : ''}`;
+  el.classList.toggle('is-search', Boolean(query));
 }
 
 function render() {
   const items = filtered();
-  const total = sum(items);
-  // Overview "Today" is always calendar-today spend (all expenses), not filter-dependent.
+  const monthItems = monthExpenses();
+  const monthTotal = sum(monthItems);
+  const isAll = state.month === ALL_MONTHS;
+  const isCurrentMonth = state.month === currentMonthKey();
+  // "Today" is always calendar-today spend, never filter-dependent.
   const today = sum(expenses.filter(item => dayKey(item.date) === todayKey()));
   const allTotal = sum(expenses);
+  const label = monthLabel(state.month);
+  const name = monthName(state.month);
 
   $('#greeting').textContent = greetingForNow();
-  $('#total').textContent = INR.format(allTotal);
-  $('#total-sub').textContent = `${expenses.length} transaction${expenses.length === 1 ? '' : 's'}`;
-  $('#heroDate').textContent = new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
-  $('#stats').innerHTML = `
-    <div class="stat"><span class="stat-icon">↗</span><div><small>Today</small><strong>${INR.format(today)}</strong>${deltaLine(today, yesterdaySpend(), 'from yesterday')}</div></div>
-    <div class="stat"><span class="stat-icon">↘</span><div><small>Selected</small><strong>${INR.format(total)}</strong>${deltaLine(monthSpend(), lastMonthSpend(), 'from last month')}</div></div>`;
+  $('#heroLabel').textContent = isAll ? 'TOTAL SPENT' : `SPENT IN ${label.toUpperCase()}`;
+  $('#total').textContent = INR.format(monthTotal);
+  $('#total-sub').textContent = `${monthItems.length} transaction${monthItems.length === 1 ? '' : 's'}`
+    + (isAll ? ' · all time' : '');
+  $('#heroDate').textContent = isAll ? 'All time' : monthLabel(state.month, { short: true });
+
+  // The second card compares like with like: today against yesterday while
+  // you are on the live month, month against the month before it otherwise.
+  const previousKey = isAll ? '' : shiftMonthKey(state.month, -1);
+  const previousTotal = previousKey ? spendInMonth(previousKey) : 0;
+  const days = isAll ? 0 : daysInMonth(state.month);
+  const stats = isAll
+    ? [
+        ['↗', 'All time', allTotal, ''],
+        ['↘', 'Monthly average', monthsWithData().length ? allTotal / monthsWithData().length : 0, ''],
+      ]
+    : isCurrentMonth
+      ? [
+          ['↗', 'Today', today, deltaLine(today, yesterdaySpend(), 'from yesterday')],
+          ['↘', 'This month', monthTotal, deltaLine(monthTotal, previousTotal, `from ${monthName(previousKey)}`)],
+        ]
+      : [
+          ['↗', `${name} total`, monthTotal, deltaLine(monthTotal, previousTotal, `from ${monthName(previousKey)}`)],
+          ['↘', 'Daily average', days ? monthTotal / days : 0, ''],
+        ];
+  $('#stats').innerHTML = stats.map(([icon, caption, value, delta]) => `
+    <div class="stat"><span class="stat-icon">${icon}</span><div><small>${escapeHtml(caption)}</small><strong>${INR.format(value)}</strong>${delta}</div></div>`).join('');
 
   $('#recentPreview').innerHTML = items.length
     ? items.slice(0, 3).map(item => row(item, true)).join('')
-    : '<div class="empty">No expenses yet. Tap + to add one.</div>';
+    : `<div class="empty">Nothing in ${escapeHtml(label)} yet. Tap + to add one.</div>`;
+
+  $('#transactionsSub').textContent = isAll ? 'Everything, grouped by date' : `${label} · grouped by date`;
+  renderTxSummary(items);
 
   const groups = groupByDate(items);
   $('#list').innerHTML = groups.length
@@ -942,28 +1353,42 @@ function render() {
           <div class="date-label">${escapeHtml(formatDayLabel(key))} · ${INR.format(sum(groupItems))}</div>
           ${groupItems.map(item => row(item)).join('')}
         </div>`).join('')
-    : '<div class="empty">No expenses match these filters.</div>';
+    : `<div class="empty">No expenses match these filters in ${escapeHtml(label)}.</div>`;
 
-  $('#analyticsTotal').textContent = INR.format(chartWindowTotal());
-  $('#analyticsDate').textContent = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
-  $('#analyticsStats').innerHTML = expenses
-    .filter(inChartWindow)
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 4)
-    .map(item => `
+  const breakdown = categoryBreakdown();
+  $('#analyticsLabel').textContent = `SPENDING · ${chartScopeLabel().toUpperCase()}`;
+  $('#analyticsTotal').textContent = INR.format(breakdown.total);
+  $('#analyticsDate').textContent = 'Tap or drag the chart to read a value';
+  $('#analyticsBreakdownTitle').textContent = `Where it went · ${chartScopeLabel()}`;
+  $('#analyticsStats').innerHTML = breakdown.rows.length
+    ? breakdown.rows.slice(0, 6).map(entry => {
+        const share = breakdown.total > 0 ? (entry.total / breakdown.total) * 100 : 0;
+        return `
       <div class="top-item">
-        <span>${icons[(item.category || '').trim().toLowerCase()] || '🏷️'}</span>
+        <span>${icons[entry.name.toLowerCase()] || '🏷️'}</span>
         <div>
-          <strong>${escapeHtml(item.category || 'Expense')}</strong>
-          <small>${escapeHtml(item.description || item.payment_method || '')}</small>
+          <strong>${escapeHtml(entry.name)}</strong>
+          <small>${entry.count} transaction${entry.count === 1 ? '' : 's'} · ${Math.round(share)}%</small>
+          <div class="share-track"><i style="width:${share.toFixed(1)}%"></i></div>
         </div>
-        <b>-${INR.format(item.amount)}</b>
-      </div>`).join('') || '<div class="empty">No spending data yet.</div>';
+        <b>${INR.format(entry.total)}</b>
+      </div>`;
+      }).join('')
+    : `<div class="empty">Nothing recorded for ${escapeHtml(chartScopeLabel())}.</div>`;
 
-  $('#profileTotal').textContent = INR.format(allTotal);
-  $('#profileCount').textContent = String(expenses.length);
-  $('#profilePayment').textContent = preferredPayment();
+  $('#profileTotalLabel').textContent = isAll ? 'Total expenses' : `Spent in ${name}`;
+  $('#profileCountLabel').textContent = isAll ? 'Transactions recorded' : `Transactions in ${name}`;
+  $('#profileTotal').textContent = INR.format(monthTotal);
+  $('#profileCount').textContent = String(monthItems.length);
+  $('#profilePayment').textContent = preferredPayment(monthItems);
+  $('#profileAllTime').textContent = INR.format(allTotal);
   $('#addDateLabel').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  $('#addMonthLabel').textContent = `Spent in ${monthName(currentMonthKey())}`;
+  $('#addMonthSpend').textContent = INR.format(spendInMonth(currentMonthKey()));
+
+  renderMonthBars();
+  if (!$('#monthModal').hidden) renderMonthList();
+  syncPresetOptions();
   updateProfileIdentity();
   syncProfileKeyUi();
   syncAuthUi();
@@ -972,6 +1397,19 @@ function render() {
   updateAddPreview();
   renderBudget();
   renderRecurring();
+}
+
+/* The preset narrows the selected month, so "Today" and the rolling windows
+   are only offered while today is actually inside it. */
+function syncPresetOptions() {
+  const select = $('#preset');
+  if (!select) return;
+  const allowed = presetAllowed('today');
+  [...select.options].forEach(option => {
+    if (option.value !== 'month') option.disabled = !allowed;
+  });
+  if (!allowed && select.value !== 'month') select.value = 'month';
+  select.value = state.preset;
 }
 
 function showTab(name) {
@@ -1181,6 +1619,9 @@ async function saveExpense(event) {
   $('#expenseCategory').value = 'Expense';
   updateAddPreview();
   error.textContent = '';
+  // It was logged today, so jump to the month that actually contains it
+  // rather than leaving the user on a past month it will never appear in.
+  if (state.month !== ALL_MONTHS) state.month = currentMonthKey();
   render();
   showTab('transactions');
   setStatus('Saving…', 'muted');
@@ -1377,6 +1818,26 @@ $('#analyticsRange').onclick = event => {
   render();
 };
 
+document.addEventListener('click', event => {
+  const step = event.target.closest('[data-month-step]');
+  if (step && !step.disabled) {
+    setMonth(shiftMonthKey(state.month, Number(step.dataset.monthStep)));
+    return;
+  }
+  if (event.target.closest('[data-month-open]')) {
+    openMonthModal();
+    return;
+  }
+  const pick = event.target.closest('[data-month-pick]');
+  if (pick) {
+    closeMonthModal();
+    setMonth(pick.dataset.monthPick);
+  }
+});
+
+$('#closeMonth').onclick = closeMonthModal;
+$('[data-close-month]').onclick = closeMonthModal;
+
 $('#preset').onchange = event => { state.preset = event.target.value; render(); };
 $('#search').oninput = event => { state.q = event.target.value; render(); };
 $('#sort').onchange = event => { state.sort = event.target.value; render(); };
@@ -1390,11 +1851,12 @@ $('#payments').onclick = event => {
 };
 
 $('#clear').onclick = () => {
-  state.preset = 'all';
+  state.preset = 'month';
   state.payment = 'all';
   state.q = '';
   state.sort = 'newest';
-  $('#preset').value = 'all';
+  state.month = currentMonthKey();
+  $('#preset').value = 'month';
   $('#search').value = '';
   $('#sort').value = 'newest';
   $$('[data-payment]').forEach(item => item.classList.toggle('active', item.dataset.payment === 'all'));
