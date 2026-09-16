@@ -1217,12 +1217,11 @@ function renderMonthBars() {
   const isAll = key === ALL_MONTHS;
   const { oldest, newest } = monthNavBounds();
   const items = monthExpenses();
-  const count = items.length;
   const html = `
     <button class="month-nav" type="button" data-month-step="-1" ${isAll || key <= oldest ? 'disabled' : ''} aria-label="Previous month">${CHEVRON(-1)}</button>
     <button class="month-current" type="button" data-month-open aria-label="Choose a month">
       <span class="month-name">${escapeHtml(monthLabel(key))}</span>
-      <span class="month-amt">${INR.format(sum(items))} · ${count} transaction${count === 1 ? '' : 's'}</span>
+      <span class="month-amt">${INR.format(sum(items))}</span>
     </button>
     <button class="month-nav" type="button" data-month-step="1" ${isAll || key >= newest ? 'disabled' : ''} aria-label="Next month">${CHEVRON(1)}</button>`;
   bars.forEach(bar => {
@@ -1408,7 +1407,7 @@ function syncPresetOptions() {
   [...select.options].forEach(option => {
     if (option.value !== 'month') option.disabled = !allowed;
   });
-  if (!allowed && select.value !== 'month') select.value = 'month';
+  select.options[0].textContent = state.month === ALL_MONTHS ? 'All time' : 'Whole month';
   select.value = state.preset;
 }
 

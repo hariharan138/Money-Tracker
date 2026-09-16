@@ -411,6 +411,12 @@ h1 {
   gap: 8px;
 }
 
+/* Side by side, "Whole month" truncated to "Whole mo" on a 320px screen, and
+   dropping the font size below 16px makes iOS zoom the page on focus. */
+@media (max-width: 359px) {
+  .filter-selects { grid-template-columns: 1fr; }
+}
+
 .filter-selects select {
   width: 100%;
   height: 44px;
@@ -873,8 +879,17 @@ body.keyboard-open .bottom-nav { display: none; }
   text-align: center;
 }
 
-.month-name {
+.month-name,
+.month-amt {
   display: block;
+  /* Both lines stay single-line at 320px; a wrap here made the strip taller
+     than the arrows beside it and knocked the whole row out of line. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.month-name {
   color: var(--ink);
   font-size: 14px;
   font-weight: 750;
@@ -882,12 +897,14 @@ body.keyboard-open .bottom-nav { display: none; }
 }
 
 .month-amt {
-  display: block;
   margin-top: 2px;
   color: var(--muted);
   font-size: 11px;
   font-weight: 600;
 }
+
+/* The profile tab has no page-head above it to provide the gap. */
+[data-panel="profile"] .month-bar { margin-top: 18px; }
 
 .month-bar.is-all .month-name { color: var(--ink); }
 
@@ -989,7 +1006,9 @@ body.keyboard-open .bottom-nav { display: none; }
 
 .tx-summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* auto-fit rather than three fixed columns: a five-figure "Largest" ran
+     out past the card edge on a narrow phone. It drops to two columns. */
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 8px;
   margin-top: 14px;
 }
