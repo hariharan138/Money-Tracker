@@ -384,6 +384,12 @@ function compactINR(value) {
 
 const CHART = { w: 320, h: 200, padX: 16, padTop: 34, padBottom: 24 };
 
+/* What the drawn chart was drawn from. render() runs on every 15s poll, and
+   rebuilding the SVG each time replayed the draw-in animation and threw away
+   the point you were inspecting -- the readout snapped back to the peak
+   mid-scrub. Redraw only when the numbers actually moved. */
+let chartSignature = null;
+
 /* Catmull-Rom control points, so the line curves through every reading rather
    than cornering at it. Control points are clamped to the plot: a low tension
    still overshoots past a spike, and an overshoot below the baseline drew the
@@ -414,6 +420,14 @@ function renderChart() {
   if (!wrap) return;
 
   const buckets = chartBuckets();
+  const signature = JSON.stringify([
+    state.chartRange,
+    chartScopeKey(),
+    buckets.map(bucket => [bucket.label, bucket.total, Boolean(bucket.accent)]),
+  ]);
+  if (signature === chartSignature && wrap.firstElementChild) return;
+  chartSignature = signature;
+
   const spent = buckets.reduce((total, bucket) => total + bucket.total, 0);
   if (!buckets.length || spent <= 0) {
     wrap.innerHTML = `<div class="empty">Nothing recorded for ${escapeHtml(chartScopeLabel())}.</div>`;

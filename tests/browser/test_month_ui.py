@@ -231,6 +231,41 @@ try:
               lambda: expect(page.locator("#profileTotalLabel"))
               .to_have_text(f"Spent in {now.strftime('%B')}"))
 
+        print("\n9. The chart is not rebuilt underneath you")
+        # render() runs on every 15s poll. Rebuilding the SVG each time
+        # replayed the draw-in animation and snapped the readout back to the
+        # peak while you were still reading a day off it.
+        page.click('[data-tab="analytics"]')
+        page.wait_for_timeout(400)
+        page.evaluate("document.querySelector('#trend svg').dataset.probe = 'kept'")
+        box = page.locator("#trend svg").bounding_box()
+        page.mouse.move(box["x"] + box["width"] * 0.15, box["y"] + box["height"] / 2)
+        page.wait_for_timeout(200)
+        scrubbed = page.text_content("#trend .chart-tooltip")
+        page.wait_for_timeout(17000)   # one poll tick, plus slack
+        check("the same svg is still there after a poll",
+              lambda: expect(page.locator("#trend svg")).to_have_attribute("data-probe", "kept"))
+        check("and it still shows the value you scrubbed to",
+              lambda: expect(page.locator("#trend .chart-tooltip")).to_have_text(scrubbed))
+        # ...but a real change must still reach it.
+        page.click('[data-range="weeks"]')
+        page.wait_for_timeout(300)
+        check("switching range redraws",
+              lambda: expect(page.locator("#trend .chart-bar").first).to_be_visible())
+        page.click('[data-range="days"]')
+        page.wait_for_timeout(300)
+        page.evaluate("document.querySelector('#trend svg').dataset.probe = 'stale'")
+        page.request.post(f"{API}/api/expenses",
+                          headers={"X-API-Key": KEY, "Content-Type": "application/json"},
+                          data={"amount": 4321, "category": "Probe", "payment_method": "UPI",
+                                "date": this_month.isoformat()})
+        page.click('[data-tab="dashboard"]')   # the reload button lives there
+        page.click("#reloadBtn")
+        page.wait_for_timeout(1200)
+        page.click('[data-tab="analytics"]')
+        check("a new expense does redraw it",
+              lambda: expect(page.locator("#trend svg")).not_to_have_attribute("data-probe", "stale"))
+
         ignore = ("favicon", "cert_authority_invalid", "fonts.g")
         real = [e for e in errors if not any(word in e.lower() for word in ignore)]
         check(f"no console/page errors ({len(real)})",
