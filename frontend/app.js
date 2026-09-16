@@ -977,7 +977,6 @@ function render() {
 function showTab(name) {
   $$('[data-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === name));
   $$('[data-tab]').forEach(button => button.classList.toggle('nav-active', button.dataset.tab === name));
-  document.body.classList.toggle('on-add', name === 'add');
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (name === 'add') {
     $('#formError').textContent = '';
@@ -1440,6 +1439,21 @@ $('#authPassword').addEventListener('keydown', event => {
     doAuth('login');
   }
 });
+
+/* The floating nav would sit on top of whatever field you are typing into, so
+   it gets out of the way while the on-screen keyboard is up. Driven by the
+   viewport actually shrinking rather than by focus: focusing a field on a
+   desktop opens no keyboard, and the Add tab autofocuses its amount box. */
+const viewport = window.visualViewport;
+if (viewport) {
+  const KEYBOARD_MIN_PX = 140;  // taller than any browser chrome that comes and goes
+  const syncKeyboardState = () => {
+    const hidden = window.innerHeight - viewport.height > KEYBOARD_MIN_PX;
+    document.body.classList.toggle('keyboard-open', hidden);
+  };
+  viewport.addEventListener('resize', syncKeyboardState);
+  syncKeyboardState();
+}
 
 render();
 syncProfileKeyUi();

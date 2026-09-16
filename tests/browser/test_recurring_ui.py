@@ -264,6 +264,50 @@ try:
      check("today row keeps its amber",
            lambda: expect(page.locator(".budget-row-icon.orange")).to_have_count(1))
 
+     print("\n10. The Add tab looks like every other tab")
+
+     def head_style(tab, selector):
+         page.click(f'[data-tab="{tab}"]')
+         page.wait_for_timeout(400)
+         return page.evaluate(
+             "sel => { const el = document.querySelector(sel); const s = getComputedStyle(el);"
+             " return [s.fontSize, s.fontWeight, s.textAlign]; }", selector)
+
+     other = head_style("transactions", '[data-panel="transactions"] .page-head h1')
+     add = head_style("add", '[data-panel="add"] .page-head h1')
+     check("Add uses the same h1 as the other tabs",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{add} != {other}"))
+           if add != other else None)
+
+     other_sub = page.evaluate(
+         "getComputedStyle(document.querySelector('[data-panel=\"transactions\"] .page-sub')).textAlign")
+     add_sub = page.evaluate(
+         "getComputedStyle(document.querySelector('[data-panel=\"add\"] .page-sub')).textAlign")
+     check("its subtitle aligns like the others (was centred)",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{add_sub} != {other_sub}"))
+           if add_sub != other_sub else None)
+
+     # The nav used to be hidden for this whole tab, leaving it the only screen
+     # with no navigation.
+     check("the bottom nav stays on the Add tab",
+           lambda: expect(page.locator(".bottom-nav")).to_be_visible())
+     check("the old back-arrow header is gone",
+           lambda: expect(page.locator(".add-head, .add-meta")).to_have_count(0))
+
+     save_bg = page.evaluate(
+         "getComputedStyle(document.querySelector('#saveExpense')).backgroundImage")
+     save_color = page.evaluate(
+         "getComputedStyle(document.querySelector('#saveExpense')).backgroundColor")
+     check("Save is flat charcoal, not a violet gradient",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{save_color} / {save_bg}"))
+           if save_color != "rgb(28, 33, 40)" or save_bg != "none" else None)
+     action_color = page.evaluate(
+         "(page => { document.querySelector('[data-tab=\"profile\"]').click();"
+         " return getComputedStyle(document.querySelector('#saveApiKey')).backgroundColor; })()")
+     check("it matches the app's other primary buttons",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{save_color} != {action_color}"))
+           if save_color != action_color else None)
+
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
      check(f"no console/page errors ({len(real_errors)})",
            lambda: (_ for _ in ()).throw(AssertionError(real_errors[0])) if real_errors else None)

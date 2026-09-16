@@ -117,17 +117,6 @@ h1 {
 
 .page-head { margin-bottom: 22px; }
 
-.round {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--card);
-  color: var(--ink);
-  box-shadow: var(--shadow);
-}
 
 .reload-btn {
   display: inline-flex;
@@ -182,11 +171,6 @@ h1 {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-.round.light {
-  background: var(--card);
-  color: var(--ink);
 }
 
 /* —— Hero card —— */
@@ -616,9 +600,10 @@ h1 {
   letter-spacing: -0.1px;
 }
 
-/* The add form is full-screen with its own back arrow; keeping the floating
-   nav would park it on top of the Save button once the keyboard opens. */
-body.on-add .bottom-nav { display: none; }
+/* The nav is hidden only while the on-screen keyboard is up, where it would
+   otherwise sit on top of the field being typed into. It used to be hidden
+   for the whole Add tab, which cost that tab its navigation. */
+body.keyboard-open .bottom-nav { display: none; }
 
 .nav-item.nav-active {
   color: var(--ink);
@@ -779,31 +764,11 @@ body.on-add .bottom-nav { display: none; }
 }
 .top-item b { font-size: 13px; font-weight: 750; }
 
-/* —— Add panel (dark, matches invoice screen) —— */
-.add-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.add-head h1 {
-  font-size: 20px;
-  font-weight: 750;
-  letter-spacing: -0.4px;
-}
-
-.add-spacer { width: 44px; }
-
-.add-meta {
-  margin-bottom: 22px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 500;
-  text-align: center;
-}
-
+/* —— Add panel ——
+   Deliberately plain: it is a tab like any other, so it uses .page-head and
+   keeps the bottom nav. It used to centre a smaller title between a back
+   arrow and a spacer, which made the one screen people use most often the
+   only one that did not look like the app. */
 .add-form {
   padding: 22px 18px 20px;
   border-radius: 24px;
@@ -888,11 +853,13 @@ body.on-add .bottom-nav { display: none; }
   font-size: 15px;
 }
 
-/* Primary action, in the theme accent */
+/* Primary action. Same charcoal as .profile-action and the active filter
+   chip -- this was the last violet in the app, as a pair of literal hex
+   values rather than the token, which is how it outlived the token. */
 .save-expense {
-  background: linear-gradient(150deg, #8f7ef8, #6d59ea);
+  background: var(--charcoal);
   color: #fff;
-  box-shadow: 0 10px 22px rgba(109, 89, 234, 0.32);
+  box-shadow: 0 10px 22px rgba(20, 24, 30, 0.22);
 }
 
 .save-expense:disabled { opacity: 0.55; }
