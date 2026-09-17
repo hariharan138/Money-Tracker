@@ -58,12 +58,62 @@ button{cursor:pointer}
   border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);
   color:#fff;border-radius:11px;padding:7px 10px;font-size:12px
 }
+.mstrip{
+  display:flex;align-items:center;gap:8px;margin:0 16px 16px;padding:6px;
+  border-radius:18px;background:var(--surface);box-shadow:var(--shadow)
+}
+.mnav{
+  width:38px;height:38px;flex-shrink:0;border:0;border-radius:13px;background:#eef0f1;
+  color:#4a5059;font-size:19px;line-height:1;display:grid;place-items:center
+}
+.mnav:disabled{color:#c2c7cc;opacity:.55;cursor:default}
+.mcur{flex:1;min-width:0;border:0;border-radius:13px;background:transparent;padding:4px 6px;text-align:center}
+.mname,.mamt{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mname{color:var(--text);font-size:14px;font-weight:700;letter-spacing:-.3px}
+.mamt{margin-top:2px;color:var(--muted);font-size:11px;font-weight:600}
+.mlist{display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow-y:auto}
+.mopt{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;
+  border:0;border-radius:14px;padding:11px 14px;background:#eef0f1;color:var(--text);text-align:left
+}
+.mopt.on{background:#202224;color:#fff}
+.mopt b{display:block;font-size:13.5px}
+.mopt small{display:block;margin-top:2px;color:var(--muted);font-size:11px}
+.mopt.on small{color:#b9bdc4}
+.mopt i{font-style:normal;font-size:13px;font-weight:700;flex-shrink:0}
+
+.sumcard{
+  margin:0 16px 16px;padding:16px 18px;border-radius:20px;
+  background:var(--surface);box-shadow:var(--shadow)
+}
+.sumcard.searching{background:linear-gradient(150deg,#26282a,#191b1d);color:#fff}
+.sumhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  color:var(--muted);font-size:11.5px;font-weight:650}
+.sumcard.searching .sumhead{color:#b9bdc4}
+.sumhead em{font-style:normal;flex-shrink:0;font-size:11px}
+.sumtotal{margin-top:5px;font-size:27px;font-weight:760;letter-spacing:-1.1px}
+.sumgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;margin-top:13px}
+.sumgrid div{padding:9px 10px;border-radius:12px;background:#eef0f1}
+.sumcard.searching .sumgrid div{background:rgba(255,255,255,.09)}
+.sumgrid small{display:block;color:var(--muted);font-size:10px;font-weight:650}
+.sumcard.searching .sumgrid small{color:#a8acb3}
+.sumgrid b{display:block;margin-top:3px;font-size:13px;font-weight:720;letter-spacing:-.3px}
+.sumcats{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.sumcat{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;
+  background:#eef0f1;font-size:11px;font-weight:650}
+.sumcard.searching .sumcat{background:rgba(255,255,255,.1);color:#fff}
+
 .chart{height:145px;margin-top:13px;position:relative;z-index:1}
 .chart svg{width:100%;height:100%;overflow:visible}
-.chart-line{fill:none;stroke:#55bd82;stroke-width:2.5;stroke-linecap:round}
+.chart-line{fill:none;stroke:url(#stroke);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;
+  vector-effect:non-scaling-stroke;stroke-dasharray:1;stroke-dashoffset:1;animation:draw .8s ease forwards}
 .chart-area{fill:url(#fade)}
-.chart-grid{stroke:rgba(255,255,255,.07);stroke-width:1}
-.chart-dot{fill:#fff;stroke:#55bd82;stroke-width:3}
+.chart-grid{stroke:rgba(255,255,255,.07);stroke-width:1;vector-effect:non-scaling-stroke}
+.chart-avg{stroke:#ffb02e;stroke-width:1;stroke-dasharray:4 4;opacity:.8;vector-effect:non-scaling-stroke}
+.chart-dot{fill:#fff;stroke:#55bd82;stroke-width:3;vector-effect:non-scaling-stroke}
+.chart-cursor{stroke:rgba(255,255,255,.35);stroke-width:1;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+@keyframes draw{to{stroke-dashoffset:0}}
+@media(prefers-reduced-motion:reduce){.chart-line{animation:none;stroke-dashoffset:0}}
 .tooltip{
   position:absolute;right:9px;top:17px;background:#fff;color:#202224;
   padding:8px 12px;border-radius:12px;font-size:11px;font-weight:650;
@@ -153,6 +203,10 @@ button{cursor:pointer}
   .skeleton-block{background:linear-gradient(90deg,#2a2e32 25%,#353a3f 37%,#2a2e32 63%);background-size:400% 100%}
   .tx-icon{background:#2a2e32}
   .chip{background:#2a2e32;color:#d8dde0}
+  .mnav,.mopt,.sumgrid div,.sumcat{background:#2a2e32;color:#d8dde0}
+  .mopt.on{background:#f2f4f5;color:#17191b}
+  .mopt.on small{color:#5b6068}
+  .mstrip,.sumcard{background:var(--surface)}
   .chip.on,.sheet-row button.on{background:#f2f4f5;color:#17191b}
   .sheet-row button{background:#2a2e32;color:#d8dde0}
   .search{border-color:var(--line)}
@@ -178,28 +232,41 @@ button{cursor:pointer}
   </header>
   <div class="greeting" id="updated">Your spending overview</div>
 
+  <div class="mstrip">
+    <button class="mnav" id="mPrev" type="button" aria-label="Previous month">&lsaquo;</button>
+    <button class="mcur" id="mPick" type="button" aria-label="Choose a month">
+      <span class="mname" id="mName">&mdash;</span>
+      <span class="mamt" id="mAmt"></span>
+    </button>
+    <button class="mnav" id="mNext" type="button" aria-label="Next month">&rsaquo;</button>
+  </div>
+
   <section class="hero">
     <div class="hero-top">
       <div>
-        <div class="hero-label">TOTAL EXPENSE</div>
+        <div class="hero-label" id="heroLabel">TOTAL EXPENSE</div>
         <div class="hero-total" id="total">₹0</div>
         <div class="hero-period" id="totalSub">This month</div>
       </div>
       <select class="month" id="preset" aria-label="Date range">
-        <option value="all" selected>All time</option>
-        <option value="month">This month</option>
+        <option value="month" selected>Whole month</option>
         <option value="today">Today</option>
-        <option value="7">7 days</option>
-        <option value="30">30 days</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
       </select>
     </div>
 
     <div class="chart">
-      <svg id="trendSvg" viewBox="0 0 500 150" preserveAspectRatio="none" aria-label="Expense trend, last 7 days">
+      <svg id="trendSvg" viewBox="0 0 500 150" preserveAspectRatio="none" aria-label="Spending for the selected month">
         <defs>
           <linearGradient id="fade" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stop-color="#55bd82" stop-opacity=".20"/>
+            <stop offset="0" stop-color="#55bd82" stop-opacity=".30"/>
+            <stop offset=".65" stop-color="#55bd82" stop-opacity=".07"/>
             <stop offset="1" stop-color="#55bd82" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="stroke" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stop-color="#65c18c"/>
+            <stop offset="1" stop-color="#42a66f"/>
           </linearGradient>
         </defs>
         <line class="chart-grid" x1="0" y1="120" x2="500" y2="120"/>
@@ -228,6 +295,8 @@ button{cursor:pointer}
     <button class="chip" data-payment="cash">Cash</button>
   </div>
 
+  <section class="sumcard" id="sumCard" aria-live="polite"></section>
+
   <section class="transactions">
     <div class="section-head" style="padding-left:2px;padding-right:2px">
       <h2>Transactions</h2>
@@ -242,6 +311,14 @@ button{cursor:pointer}
   </section>
 </div>
 
+
+<div class="sheet-backdrop" id="monthSheet">
+  <div class="sheet">
+    <div class="handle"></div>
+    <h3>Choose a month</h3>
+    <div class="mlist" id="mList"></div>
+  </div>
+</div>
 
 <div class="sheet-backdrop" id="sortSheet">
   <div class="sheet">
@@ -282,7 +359,10 @@ try {
 } catch(e){ docs=[]; }
 let waitingForInitialData=!hasBootstrapData;
 
-const state = {q:'',preset:'all',payment:'all',sort:'newest'};
+const ALL_MONTHS='all';
+// The month every part of this page reads. 'YYYY-MM', or ALL_MONTHS.
+const state = {q:'',preset:'month',payment:'all',sort:'newest',month:''};
+let monthPinned=false;   // true once you pick a month yourself
 let lastFetch = new Date();
 let chart = null;
 let coldRetries=0;            // cap the cold-start retry loop
@@ -303,6 +383,47 @@ function dayKey(d){
   const x=expenseDate(d)||new Date(d);
   return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
 }
+function monthKeyOf(v){
+  const x=expenseDate(v)||new Date(v);
+  if(isNaN(x.getTime()))return'';
+  return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0');
+}
+function thisMonth(){return monthKeyOf(new Date())}
+function monthParts(k){return k.split('-').map(Number)}
+function daysInMonth(k){const [y,m]=monthParts(k);return new Date(y,m,0).getDate()}
+function monthBounds(k){const [y,m]=monthParts(k);return [new Date(y,m-1,1),new Date(y,m,0,23,59,59,999)]}
+function shiftMonth(k,d){const [y,m]=monthParts(k);return monthKeyOf(new Date(y,m-1+d,1))}
+function monthLabel(k){
+  if(!k||k===ALL_MONTHS)return'All time';
+  const [y,m]=monthParts(k);
+  return new Date(y,m-1,1).toLocaleDateString(undefined,{month:'long',year:'numeric'});
+}
+function inMonth(d,k){return k===ALL_MONTHS||monthKeyOf(d.date)===k}
+function monthDocs(k){k=k||state.month;return k===ALL_MONTHS?docs:docs.filter(d=>inMonth(d,k))}
+/** Months with expenses, newest first; this month and the selection always in. */
+function monthsWithData(){
+  const keys=new Set(docs.map(d=>monthKeyOf(d.date)).filter(Boolean));
+  keys.add(thisMonth());
+  if(state.month&&state.month!==ALL_MONTHS)keys.add(state.month);
+  return [...keys].sort().reverse();
+}
+/** Day-relative presets only mean something when today is in the window. */
+function presetAllowed(){return state.month===ALL_MONTHS||state.month===thisMonth()}
+/* Opening on an empty month is the one thing the old "widen to all time"
+   rule was there to prevent. Keep that, month-wise: start on the newest
+   month that actually has something in it. */
+function pickInitialMonth(){
+  if(monthPinned)return;
+  const now=thisMonth();
+  state.month=(!docs.length||docs.some(d=>monthKeyOf(d.date)===now))?now:monthsWithData()[0];
+}
+function setMonth(k){
+  if(state.month===k)return;
+  monthPinned=true;
+  state.month=k;
+  if(!presetAllowed()&&state.preset!=='month'){state.preset='month';$('#preset').value='month'}
+  render();
+}
 function setLoading(show){
   $('#loadingSkeleton').hidden=!show;
   $('#list').hidden=show;
@@ -311,11 +432,15 @@ function setLoading(show){
 function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x;}
 function rangeFor(p){
   const now=new Date();
-  if(p==='today') return [startOfDay(now),null];
-  if(p==='7') return [new Date(startOfDay(now)-6*864e5),null];
-  if(p==='30') return [new Date(startOfDay(now)-29*864e5),null];
-  if(p==='month') return [new Date(now.getFullYear(),now.getMonth(),1),null];
-  return [null,null];
+  let lo=null,hi=null;
+  if(state.month!==ALL_MONTHS)[lo,hi]=monthBounds(state.month);
+  if(presetAllowed()){
+    const start=p==='today'?startOfDay(now)
+      :p==='7'?new Date(startOfDay(now)-6*864e5)
+      :p==='30'?new Date(startOfDay(now)-29*864e5):null;
+    if(start&&(!lo||start>lo))lo=start;   // a preset can only narrow the month
+  }
+  return [lo,hi];
 }
 function filtered(){
   const [lo,hi]=rangeFor(state.preset);
@@ -351,20 +476,24 @@ function dayLabel(k){
   return dt.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'});
 }
 function render(){
-  let arr=filtered(), total=sum(arr), now=new Date(), todayK=dayKey(now);
-  /* never open on an empty-looking screen: if the chosen date window has
-     nothing but older expenses exist, widen to all automatically */
-  if(!arr.length&&docs.length&&!state.q&&state.preset!=='all'){
-    state.preset='all';$('#preset').value='all';
-    arr=filtered();total=sum(arr);
-  }
-  const today=sum(arr.filter(d=>dayKey(d.date)===todayK));
+  if(!monthPinned)pickInitialMonth();   // re-evaluated as data arrives
+  const arr=filtered(), total=sum(arr), now=new Date(), todayK=dayKey(now);
+  const isAll=state.month===ALL_MONTHS, live=state.month===thisMonth();
+  const mDocs=monthDocs(), mTotal=sum(mDocs);
+  const today=sum(docs.filter(d=>dayKey(d.date)===todayK));
+  renderMonthStrip(mDocs,mTotal,isAll);
+  syncPreset();
+  $('#heroLabel').textContent=isAll?'TOTAL EXPENSE':'SPENT IN '+monthLabel(state.month).toUpperCase();
   $('#total').textContent=INR.format(total);
-  $('#totalSub').textContent=(arr.length===docs.length?'':'Filtered · ')+arr.length+' transaction'+(arr.length===1?'':'s');
-  $('#stats').innerHTML=[
-    ['Today',INR.format(today),'Spent today'],
-    ['Total',INR.format(total),'Selected expenses']
-  ].map(x=>`<div class="stat"><div class="stat-label">${x[0]}</div><div class="stat-value">${x[1]}</div><div class="stat-sub">${x[2]}</div></div>`).join('');
+  $('#totalSub').textContent=(arr.length===mDocs.length?'':'Filtered · ')+arr.length+' transaction'+(arr.length===1?'':'s');
+  const days=isAll?0:daysInMonth(state.month);
+  $('#stats').innerHTML=(live||isAll
+    ? [['Today',INR.format(today),'Spent today'],
+       [isAll?'All time':monthLabel(state.month),INR.format(mTotal),'Whole month']]
+    : [[monthLabel(state.month),INR.format(mTotal),'Whole month'],
+       ['Daily average',INR.format(days?mTotal/days:0),'Across the month']]
+  ).map(x=>`<div class="stat"><div class="stat-label">${esc(x[0])}</div><div class="stat-value">${x[1]}</div><div class="stat-sub">${esc(x[2])}</div></div>`).join('');
+  renderSummary(arr);
 
   const groups=new Map();
   for(const d of arr){const k=dayKey(d.date);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(d)}
@@ -377,41 +506,117 @@ function render(){
     ? '<div class="empty">No expenses match your filters.<br><br><button class="chip on" onclick="clearAll()">Show everything</button></div>'
     : '<div class="empty">No expenses yet.<br><br>Add your first expense from the iPhone Shortcut.</div>';
   $('#list').innerHTML=out;
-  $('#clear').style.visibility=(state.q||state.preset!=='all'||state.payment!=='all')?'visible':'hidden';
+  $('#clear').style.visibility=(state.q||state.preset!=='month'||state.payment!=='all'||state.month!==thisMonth())?'visible':'hidden';
   buildChart();
 }
+
+function renderMonthStrip(mDocs,mTotal,isAll){
+  const months=monthsWithData(), oldest=months[months.length-1];
+  $('#mName').textContent=monthLabel(state.month);
+  $('#mAmt').textContent=INR.format(mTotal);
+  $('#mPrev').disabled=isAll||state.month<=oldest;
+  $('#mNext').disabled=isAll||state.month>=thisMonth();
+}
+
+function renderMonthList(){
+  const opt=(k,name,meta,total)=>`<button class="mopt${state.month===k?' on':''}" type="button" data-month="${esc(k)}">`
+    +`<span><b>${esc(name)}</b><small>${esc(meta)}</small></span><i>${INR.format(total)}</i></button>`;
+  const rows=monthsWithData().map(k=>{
+    const items=monthDocs(k);
+    return opt(k,monthLabel(k),items.length+' transaction'+(items.length===1?'':'s'),sum(items));
+  }).join('');
+  $('#mList').innerHTML=rows
+    +opt(ALL_MONTHS,'All time',docs.length+' transaction'+(docs.length===1?'':'s'),sum(docs));
+}
+
+/* "Whole month" is a lie while All time is selected, and the day-relative
+   windows cannot apply to a month that does not contain today. */
+function syncPreset(){
+  const sel=$('#preset'), allowed=presetAllowed();
+  [...sel.options].forEach(o=>{if(o.value!=='month')o.disabled=!allowed});
+  sel.options[0].textContent=state.month===ALL_MONTHS?'All time':'Whole month';
+  sel.value=state.preset;
+}
+
+/** The total for exactly what is on screen -- the answer to a search. */
+function renderSummary(arr){
+  const card=$('#sumCard'), q=state.q.trim();
+  const scope=state.month===ALL_MONTHS?'all time':monthLabel(state.month);
+  const win={today:'today','7':'last 7 days','30':'last 30 days'}[state.preset];
+  const where=win&&presetAllowed()?scope+' · '+win:scope;
+  card.classList.toggle('searching',Boolean(q));
+  if(!arr.length){
+    card.innerHTML=`<div class="sumhead"><span>${q?'No match for “'+esc(q)+'”':'Nothing here yet'}</span></div>`
+      +`<div class="sumtotal">${INR.format(0)}</div><div class="sumhead"><span>${esc(where)}</span></div>`;
+    return;
+  }
+  const amounts=arr.map(d=>Number(d.amount||0));
+  const total=amounts.reduce((a,b)=>a+b,0);
+  const cats=Object.entries(cnt(arr,d=>(d.category||'Expense').trim()||'Expense')).sort((a,b)=>b[1]-a[1]);
+  card.innerHTML=
+    `<div class="sumhead"><span>${q?'Total for “'+esc(q)+'”':'Total'}</span><em>${esc(where)}</em></div>`
+    +`<div class="sumtotal">${INR.format(total)}</div>`
+    +`<div class="sumgrid">`
+    +`<div><small>Transactions</small><b>${arr.length}</b></div>`
+    +`<div><small>Average</small><b>${INR.format(total/arr.length)}</b></div>`
+    +`<div><small>Largest</small><b>${INR.format(Math.max(...amounts))}</b></div></div>`
+    +(cats.length>1?`<div class="sumcats">`+cats.slice(0,4).map(([n,v])=>
+        `<span class="sumcat">${emo(n)} ${esc(n)} <b>${INR.format(v)}</b></span>`).join('')+`</div>`:'');
+}
+/* One point per day of the selected month, so the chart answers the same
+   question as everything else on the page. Redrawn only when its numbers
+   move: render() also runs on the poll, and rebuilding it every time
+   replayed the draw-in and threw away the day you were reading. */
+let chartSig=null;
 function buildChart(){
-  const days=[...Array(7)].map((_,i)=>startOfDay(new Date()-(6-i)*864e5));
-  const totals=days.map(d=>sum(docs.filter(t=>
-    dayKey(t.date)===dayKey(d) &&
-    (state.payment==='all'||(t.payment_method||'').trim().toLowerCase()===state.payment)
-  )));
+  const key=state.month===ALL_MONTHS?thisMonth():state.month;
+  const [y,m]=monthParts(key), n=daysInMonth(key);
+  const payOk=t=>state.payment==='all'||(t.payment_method||'').trim().toLowerCase()===state.payment;
+  const byDay=new Map();
+  for(const t of docs){if(payOk(t)){const k=dayKey(t.date);byDay.set(k,(byDay.get(k)||0)+Number(t.amount||0))}}
+  const days=[...Array(n)].map((_,i)=>new Date(y,m-1,i+1));
+  const totals=days.map((d,i)=>byDay.get(key+'-'+String(i+1).padStart(2,'0'))||0);
+
+  const sig=JSON.stringify([key,state.payment,totals]);
+  if(sig===chartSig&&$('#plot').firstChild)return;
+  chartSig=sig;
+
   const max=Math.max(...totals,1);
-  const W=500,H=150,topPad=24,botPad=28,n=totals.length-1;
-  const pts=totals.map((v,i)=>[i*(W/n), H-botPad-(v/max)*(H-topPad-botPad)]);
-  let dLine='';
-  pts.forEach((p,i)=>{
-    if(!i){dLine=`M${p[0].toFixed(1)},${p[1].toFixed(1)}`;return}
-    const [px,py]=pts[i-1],cx=((px+p[0])/2).toFixed(1);
-    dLine+=` C${cx},${py.toFixed(1)} ${cx},${p[1].toFixed(1)} ${p[0].toFixed(1)},${p[1].toFixed(1)}`;
-  });
+  const W=500,H=150,topPad=24,botPad=28,step=n>1?W/(n-1):0;
+  const pts=totals.map((v,i)=>[n>1?i*step:W/2, H-botPad-(v/max)*(H-topPad-botPad)]);
+  let dLine=`M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for(let i=1;i<pts.length;i++){
+    const [px,py]=pts[i-1],[x,cy]=pts[i],cx=((px+x)/2).toFixed(1);
+    dLine+=` C${cx},${py.toFixed(1)} ${cx},${cy.toFixed(1)} ${x.toFixed(1)},${cy.toFixed(1)}`;
+  }
+  const spent=totals.reduce((a,b)=>a+b,0);
+  const avgY=H-botPad-((spent/n)/max)*(H-topPad-botPad);
+  const todayI=days.findIndex(d=>dayKey(d)===dayKey(new Date()));
+  const peakI=totals.indexOf(Math.max(...totals));
   $('#plot').innerHTML=
     `<path class="chart-area" d="${dLine} L${W},${H} L0,${H} Z"/>`+
-    `<path class="chart-line" d="${dLine}"/>`+
-    pts.map((p,i)=>`<circle class="chart-dot" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4.5" data-i="${i}"/>`).join('');
+    `<line class="chart-avg" x1="0" y1="${avgY.toFixed(1)}" x2="${W}" y2="${avgY.toFixed(1)}"/>`+
+    `<path class="chart-line" pathLength="1" d="${dLine}"/>`+
+    `<line class="chart-cursor" id="cursorLine" x1="0" y1="${topPad}" x2="0" y2="${H-botPad}" style="display:none"/>`+
+    `<circle class="chart-dot" id="cursorDot" cx="0" cy="0" r="4.5" style="display:none"/>`;
+  // Labels are plain HTML: the SVG is stretched to fit, which would squash text.
   $('#chartDays').innerHTML=days.map((d,i)=>{
-    const l='SMTWTFS'[d.getDay()];
-    return i===6?`<b>${l}</b>`:`<span>${l}</span>`;
+    const day=i+1, show=day===1||day%5===0;
+    if(!show)return'<span></span>';
+    return i===todayI?`<b>${day}</b>`:`<span>${day}</span>`;
   }).join('');
-  chart={pts,days,totals};
-  setTip(6);
+  chart={pts,days,totals,key};
+  setTip(todayI>=0?todayI:peakI);
 }
 function setTip(i){
   if(!chart)return;
   const {pts,days,totals}=chart;
-  document.querySelectorAll('.chart-dot').forEach((c,j)=>c.style.opacity=j===i?1:.35);
-  $('#tooltip').innerHTML=
-    `${INR.format(totals[i])}<small>Selected day</small>`;
+  i=Math.max(0,Math.min(pts.length-1,i));
+  const line=$('#cursorLine'),dot=$('#cursorDot');
+  if(line){line.style.display='';line.setAttribute('x1',pts[i][0]);line.setAttribute('x2',pts[i][0])}
+  if(dot){dot.style.display='';dot.setAttribute('cx',pts[i][0]);dot.setAttribute('cy',pts[i][1])}
+  $('#tooltip').innerHTML=`${INR.format(totals[i])}`
+    +`<small>${esc(days[i].toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))}</small>`;
 }
 function row(d){
   const date=expenseDate(d.date);
@@ -428,8 +633,9 @@ function row(d){
   </div>`;
 }
 function clearAll(){
-  state.q='';state.preset='all';state.payment='all';state.sort='newest';
-  $('#q').value='';$('#preset').value='all';
+  state.q='';state.preset='month';state.payment='all';state.sort='newest';
+  state.month=thisMonth();monthPinned=false;
+  $('#q').value='';$('#preset').value='month';
   document.querySelectorAll('[data-payment]').forEach(b=>b.classList.toggle('on',b.dataset.payment==='all'));
   render();
 }
@@ -499,6 +705,16 @@ $('#searchBtn').onclick=()=>{
   if(w.style.display==='block')setTimeout(()=>$('#q').focus(),50);
 };
 $('#clear').onclick=clearAll;
+$('#mPrev').onclick=()=>setMonth(shiftMonth(state.month,-1));
+$('#mNext').onclick=()=>setMonth(shiftMonth(state.month,1));
+$('#mPick').onclick=()=>{renderMonthList();$('#monthSheet').style.display='block'};
+$('#monthSheet').onclick=e=>{
+  if(e.target.id==='monthSheet'){$('#monthSheet').style.display='none';return}
+  const b=e.target.closest('[data-month]');
+  if(!b)return;
+  $('#monthSheet').style.display='none';
+  setMonth(b.dataset.month);
+};
 $('#sortBtn').onclick=()=>$('#sortSheet').style.display='block';
 $('#sortSheet').onclick=e=>{
   if(e.target.id==='sortSheet')$('#sortSheet').style.display='none';
@@ -509,12 +725,13 @@ $('#sortSheet').onclick=e=>{
   $('#sortBtn').textContent=b.textContent;$('#sortSheet').style.display='none';render();
 };
 
-$('#trendSvg').onclick=e=>{
+function scrub(e){
   if(!chart)return;
-  const r=e.currentTarget.getBoundingClientRect();
-  const i=Math.max(0,Math.min(chart.pts.length-1,Math.round((e.clientX-r.left)/r.width*(chart.pts.length-1))));
-  setTip(i);
-};
+  const r=$('#trendSvg').getBoundingClientRect();
+  setTip(Math.round((e.clientX-r.left)/r.width*(chart.pts.length-1)));
+}
+$('#trendSvg').onpointerdown=scrub;
+$('#trendSvg').onpointermove=e=>{if(e.pointerType==='mouse'||e.buttons)scrub(e)};
 /* live data: silent poll + instant refresh when the tab becomes visible/focused
    Aggressive strategy to keep server awake on Render.com:
    - 5-minute polling when visible

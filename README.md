@@ -241,12 +241,22 @@ icon, page lives in `app/static/index.html`):
 - **Refresh button** (+ `r` key), relative "updated x ago" stamp
 - **Live data**: polls for new expenses every 15 s and refreshes instantly when
   you switch back to the tab — Shortcut entries appear without tapping anything
-- **Filters**: search box, category chips, date presets (defaults to **All
-  time**, plus this month / today / 7d / 30d), sort sheet (newest / oldest / amount)
-- **Live 7-day trend chart** built from your data, tap a point for that day's total
-- **Stats**: today / last 7 days / this month / largest expense
+- **One month at a time**: the strip at the top (`‹ September 2026 ›`) scopes
+  the whole page — hero, stats, chart and list. Tap the month for a sheet of
+  every month that has data, plus **All time**. It opens on the current month,
+  or on the newest month with data if this one is still empty.
+- **Filters**: search box, payment chips, a date window inside the selected
+  month (whole month / today / 7d / 30d), sort sheet (newest / oldest / amount)
+- **Search totals**: a card above the list totals exactly what is on screen —
+  search `food` and it answers with the food total for that month, the count,
+  the average and the largest
+- **Chart of the selected month**, day by day, with an average line; drag
+  across it to read any day's total
 - List grouped by day with daily subtotals
 - **Delete** (✕ with confirm)
+
+This page and the `frontend/` app are separate codebases that happen to look
+alike; a change to one does not reach the other.
 
 A wrong or missing key returns `401`. The key itself is never rendered into
 the page source — the JS reads it from the URL you bookmarked.
