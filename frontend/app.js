@@ -18,6 +18,54 @@ document.addEventListener('dblclick', event => event.preventDefault(), { passive
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const API_KEY_STORAGE = 'expenses-api-key';
+const THEME_STORAGE = 'expenses-theme';
+
+/* —— Theme ——
+ * index.html resolves the theme before first paint; this takes over from
+ * there. Only an explicit tap is stored: with nothing stored the app keeps
+ * following the system, so switching the phone to dark at sunset carries the
+ * app with it. */
+const THEME_COLOR = { light: '#f5f5f7', dark: '#101317' };
+
+function storedTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE);
+    return saved === 'dark' || saved === 'light' ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function systemTheme() {
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function activeTheme() {
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+}
+
+function applyTheme(theme, { remember = false } = {}) {
+  document.documentElement.dataset.theme = theme;
+  // Keeps the iOS status bar and the Android chrome in step with the page.
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme]);
+  if (remember) {
+    try {
+      localStorage.setItem(THEME_STORAGE, theme);
+    } catch {
+      /* private mode: the choice lasts for this session only */
+    }
+  }
+  syncThemeUi();
+}
+
+function syncThemeUi() {
+  const theme = activeTheme();
+  $$('[data-theme-choice]').forEach(button => {
+    const chosen = button.dataset.themeChoice === theme;
+    button.classList.toggle('active', chosen);
+    button.setAttribute('aria-pressed', String(chosen));
+  });
+}
 
 /** Persist ?key= for Home Screen / PWA launches that open `/` without the query. */
 function readStoredApiKey() {
@@ -262,19 +310,19 @@ function renderChart() {
     <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Spending chart">
       <defs>
         <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#151922" stop-opacity="0.18"/>
-          <stop offset="100%" stop-color="#151922" stop-opacity="0"/>
+          <stop class="chart-fill-stop" offset="0%" stop-opacity="0.18"/>
+          <stop class="chart-fill-stop" offset="100%" stop-opacity="0"/>
         </linearGradient>
       </defs>
       <path d="${area}" fill="url(#chartFill)"/>
-      <path d="${line}" fill="none" stroke="#151922" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-      <line x1="${peak.x}" y1="${padTop}" x2="${peak.x}" y2="${h - padBottom}" stroke="#c9ccd1" stroke-width="1.2" stroke-dasharray="4 4"/>
-      <circle cx="${peak.x}" cy="${peak.y}" r="5" fill="#151922"/>
-      <circle cx="${peak.x}" cy="${peak.y}" r="2.5" fill="#fff"/>
+      <path class="chart-line" d="${line}" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <line x1="${peak.x}" y1="${padTop}" x2="${peak.x}" y2="${h - padBottom}" class="chart-guide" stroke-width="1.2" stroke-dasharray="4 4"/>
+      <circle class="chart-dot" cx="${peak.x}" cy="${peak.y}" r="5"/>
+      <circle class="chart-dot-core" cx="${peak.x}" cy="${peak.y}" r="2.5"/>
       ${valueLabels}
-      <rect x="${peakX}" y="${peakY}" width="${peakWidth}" height="22" rx="8" fill="#151922"/>
+      <rect class="chart-badge" x="${peakX}" y="${peakY}" width="${peakWidth}" height="22" rx="8"/>
       <text class="chart-tooltip" x="${peakX + peakWidth / 2}" y="${peakY + 15}" text-anchor="middle">${peakLabel}</text>
-      ${points.map(p => `<text x="${p.x}" y="${h - 6}" text-anchor="middle" fill="#a0a3a9" font-size="9" font-weight="600">${escapeHtml(p.label)}</text>`).join('')}
+      ${points.map(p => `<text class="chart-axis" x="${p.x}" y="${h - 6}" text-anchor="middle" font-size="9" font-weight="600">${escapeHtml(p.label)}</text>`).join('')}
     </svg>`;
 }
 
@@ -1420,6 +1468,16 @@ $('#limitInput').addEventListener('keydown', event => {
   }
 });
 
+$('#themeToggle').onclick = event => {
+  const button = event.target.closest('[data-theme-choice]');
+  if (button) applyTheme(button.dataset.themeChoice, { remember: true });
+};
+
+// Track the system only until the user picks a side, and never afterwards.
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
+  if (!storedTheme()) applyTheme(systemTheme());
+});
+
 $('#dashAvatar').onclick = () => showTab('profile');
 $('#avatarEdit').onclick = () => $('#avatarInput').click();
 $('#editAvatarLink').onclick = () => $('#avatarInput').click();
@@ -1454,6 +1512,8 @@ if (viewport) {
   viewport.addEventListener('resize', syncKeyboardState);
   syncKeyboardState();
 }
+
+applyTheme(storedTheme() || systemTheme());
 
 render();
 syncProfileKeyUi();

@@ -16,6 +16,22 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>Expenses</title>
+  <script>
+    // Runs before the stylesheet paints, so the app never flashes the wrong
+    // theme on launch. Kept tiny and inline for that reason; app.js takes
+    // over once it loads. Resolved to an explicit value here so the CSS needs
+    // one dark block rather than a media query and an attribute selector.
+    (function () {
+      var theme = 'light';
+      try {
+        var saved = localStorage.getItem('expenses-theme');
+        theme = saved === 'dark' || saved === 'light' ? saved
+          : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark' : 'light');
+      } catch (e) { /* private mode: fall back to light */ }
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
 </head>
 <body>
   <main class="app">
@@ -105,6 +121,16 @@
           <button type="button" class="active" data-payment="all">All</button>
           <button type="button" data-payment="upi">UPI</button>
           <button type="button" data-payment="cash">Cash</button>
+        </div>
+        <div id="themeToggle" class="chips" role="group" aria-label="Appearance">
+          <button type="button" data-theme-choice="light">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M4.2 12H2M22 12h-2.2M6.4 6.4 4.8 4.8M19.2 19.2l-1.6-1.6M17.6 6.4l1.6-1.6M4.8 19.2l1.6-1.6"/></svg>
+            Light
+          </button>
+          <button type="button" data-theme-choice="dark">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.4 8.4 0 1 0 10.2 10.2z"/></svg>
+            Dark
+          </button>
         </div>
         <div class="filter-selects">
           <select id="preset" aria-label="Date range">

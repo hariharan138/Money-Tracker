@@ -1,19 +1,119 @@
 :root {
-  --ink: #151922;
-  --muted: #9a9da5;
-  --paper: #f5f5f7;
-  --card: #ffffff;
-  --charcoal: #1c2128;
-  --orange: #ffb02e;
+  color-scheme: light;
+
+  /* Text */
+  --ink: #151922;          /* primary */
+  --label: #5b6068;        /* form labels */
+  --muted: #9a9da5;        /* secondary */
+  --soft: #c0c4ca;         /* placeholders, chevrons, disabled marks */
+
+  /* Surfaces, from furthest back to nearest front */
+  --paper: #f5f5f7;        /* the page */
+  --card: #ffffff;         /* raised card */
+  --subtle: #f4f5f7;       /* quiet fill inside a card */
+  --chip: #ebebef;         /* inactive chip / secondary button */
+  --field: #fafbfc;        /* input at rest */
+  --field-focus: #ffffff;  /* input while focused */
+  --line: #e3e5e9;         /* hairline */
+  --frame: #2f3640;        /* the mat the phone sits on, wide screens only */
+
+  /* Primary action. Inverts in dark: a charcoal button on a charcoal page
+     would disappear, so the pair moves together. */
+  --accent: #1c2128;
+  --on-accent: #ffffff;
+  /* Surfaces that are dark in BOTH themes (the hero card, the avatar disc),
+     so their text is white in both. */
+  --on-dark: #ffffff;
+  --hero-from: #2a3038;
+  --hero-to: #14181e;
+  --avatar-from: #2b323a;
+  --avatar-to: #6a747f;
+
+  /* Meaning. Kept in both themes -- green is income, amber is spend. */
   --green: #22c55e;
+  --orange: #ffb02e;
   --danger: #ef4444;
+  --amber-text: #f59e0b;
+  --ok-text: #2f9d63;
+  --err-text: #d64545;
+  --amber-ink: #9a6a00;
+  --red-ink: #c62828;
+  --tint-green: #e8faf0;
+  --tint-amber: #fff4e3;
+  --tint-red: #fdeaea;
+  /* Rotating pastel discs behind transaction icons */
+  --tint-1: #f6eef3;
+  --tint-2: #eef6ff;
+  --tint-3: #fff6e4;
+  --tint-4: #f3f0f8;
+
+  --backdrop: rgba(14, 18, 24, 0.5);
   --shadow: 0 10px 28px rgba(28, 33, 40, 0.07);
+  --shadow-nav: 0 12px 30px rgba(20, 24, 30, 0.12), 0 3px 10px rgba(20, 24, 30, 0.06);
+  --shadow-lift: 0 12px 24px rgba(20, 24, 30, 0.28), 0 3px 8px rgba(20, 24, 30, 0.18);
+  --shadow-lift-active: 0 16px 30px rgba(20, 24, 30, 0.34), 0 4px 10px rgba(20, 24, 30, 0.2);
+  --shadow-hero: 0 22px 40px rgba(20, 24, 30, 0.28);
+  --shadow-modal: 0 24px 60px rgba(14, 18, 24, 0.4);
+  --shadow-frame: 0 30px 70px rgba(14, 18, 24, 0.35);
+
   --nav-h: 72px;
   /* Capacitor injects --safe-area-inset-* in the native shell (Android draws
      edge-to-edge behind the status bar); env() covers the browser / iOS PWA. */
   --safe-t: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
   --safe-b: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
+
+/* Dark. One block, not two, because the theme is always resolved to an
+   explicit data-theme by the boot script in index.html -- so this never has to
+   be repeated under a prefers-color-scheme media query. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ink: #e9ecf1;
+  --label: #a6adb7;
+  --muted: #8b919b;
+  --soft: #626973;
+
+  --paper: #101317;
+  --card: #181c22;
+  --subtle: #1e232a;
+  --chip: #242a32;
+  --field: #1a1f25;
+  --field-focus: #1f252c;
+  --line: #2a313a;
+  --frame: #05070a;
+
+  --accent: #eef1f5;
+  --on-accent: #14181e;
+  /* --on-dark, --hero-*, --avatar-* deliberately unchanged: those surfaces
+     were always dark, and the hero still needs to sit above the page, which
+     is why it is lifted rather than darkened. */
+  --hero-from: #272e37;
+  --hero-to: #171b21;
+
+  --amber-text: #f5b544;
+  --ok-text: #4fd08a;
+  --err-text: #ff8080;
+  --amber-ink: #f3c67d;
+  --red-ink: #ff9b9b;
+  --tint-green: #143025;
+  --tint-amber: #382b14;
+  --tint-red: #3b1f1f;
+  --tint-1: #2c2430;
+  --tint-2: #1e2a38;
+  --tint-3: #322a1a;
+  --tint-4: #272334;
+
+  --backdrop: rgba(0, 0, 0, 0.66);
+  --shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  --shadow-nav: 0 12px 30px rgba(0, 0, 0, 0.6), 0 3px 10px rgba(0, 0, 0, 0.4);
+  --shadow-lift: 0 12px 24px rgba(0, 0, 0, 0.6), 0 3px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lift-active: 0 16px 30px rgba(0, 0, 0, 0.7), 0 4px 10px rgba(0, 0, 0, 0.45);
+  --shadow-hero: 0 22px 40px rgba(0, 0, 0, 0.55);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.7);
+  --shadow-frame: 0 30px 70px rgba(0, 0, 0, 0.6);
+}
+
 
 * { box-sizing: border-box; }
 
@@ -98,7 +198,7 @@ h1 {
 
 .sync-status, .page-sub {
   margin-top: 6px;
-  color: #adb0b6;
+  color: var(--muted);
   font-size: 11px;
   font-weight: 500;
 }
@@ -113,7 +213,7 @@ h1 {
 }
 
 .sync-status.err .status-dot { background: var(--danger); }
-.sync-status.muted .status-dot { background: #c7cad0; }
+.sync-status.muted .status-dot { background: var(--soft); }
 
 .page-head { margin-bottom: 22px; }
 
@@ -150,16 +250,16 @@ h1 {
   margin-top: 2px;
   border: 0;
   border-radius: 50%;
-  background: linear-gradient(145deg, #2b323a, #6a747f);
+  background: linear-gradient(145deg, var(--avatar-from), var(--avatar-to));
   box-shadow: var(--shadow);
   overflow: hidden;
-  color: #fff;
+  color: var(--on-dark);
   font-size: 15px;
   font-weight: 800;
 }
 
 .dash-avatar.has-photo {
-  background-color: #2b323a;
+  background-color: var(--avatar-from);
 }
 
 .reload-btn:active { transform: scale(0.97); }
@@ -182,9 +282,9 @@ h1 {
   margin: 26px 0 28px;
   padding: 26px 24px 22px;
   border-radius: 28px;
-  background: linear-gradient(145deg, #2a3038 0%, #14181e 100%);
-  color: #fff;
-  box-shadow: 0 22px 40px rgba(20, 24, 30, 0.28);
+  background: linear-gradient(145deg, var(--hero-from) 0%, var(--hero-to) 100%);
+  color: var(--on-dark);
+  box-shadow: var(--shadow-hero);
 }
 
 .hero-wave {
@@ -217,7 +317,7 @@ h1 {
   top: 22px;
   border: 0;
   background: transparent;
-  color: #fff;
+  color: var(--on-dark);
   font-size: 16px;
   letter-spacing: 2px;
   z-index: 1;
@@ -276,7 +376,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #c7cad0;
+  color: var(--soft);
   letter-spacing: 0.2px;
 }
 
@@ -330,8 +430,8 @@ h1 {
   font-weight: 700;
 }
 
-.stat:first-child .stat-icon { background: #e8faf0; color: var(--green); }
-.stat:last-child .stat-icon { background: #fff4e3; color: #f59e0b; }
+.stat:first-child .stat-icon { background: var(--tint-green); color: var(--green); }
+.stat:last-child .stat-icon { background: var(--tint-amber); color: var(--amber-text); }
 
 .stat small {
   display: block;
@@ -394,15 +494,42 @@ h1 {
   border: 0;
   border-radius: 12px;
   padding: 0 12px;
-  background: #ebebef;
-  color: #6f737b;
+  background: var(--chip);
+  color: var(--muted);
   font-size: 13px;
   font-weight: 650;
 }
 
 .chips button.active {
-  background: var(--charcoal);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* The theme chips carry an icon beside their label */
+#themeToggle button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Every surface animates together on a theme change, so the switch reads as
+   one movement instead of a dozen. Kept short: any longer and tapping the
+   toggle twice looks broken. */
+body, .app, .tab-panel, .controls input, .chips button, .filter-selects select,
+.tx, .stat, .hero, .bottom-nav, .nav-item, .nav-add, .profile-card, .add-form,
+.add-form input, .add-form select, .add-summary, .budget, .modal-card,
+.recurring-item, .profile-key, .profile-action, .save-expense, .date-label {
+  transition: background-color .22s ease, color .22s ease, border-color .22s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body, .app, .tab-panel, .controls input, .chips button, .filter-selects select,
+  .tx, .stat, .hero, .bottom-nav, .nav-item, .nav-add, .profile-card, .add-form,
+  .add-form input, .add-form select, .add-summary, .budget, .modal-card,
+  .recurring-item, .profile-key, .profile-action, .save-expense, .date-label {
+    transition: none;
+  }
 }
 
 .filter-selects {
@@ -417,8 +544,8 @@ h1 {
   border: 0;
   border-radius: 12px;
   padding: 0 12px;
-  background: #ebebef;
-  color: #2a2f34;
+  background: var(--chip);
+  color: var(--ink);
   font-size: 16px;
   font-weight: 650;
   appearance: none;
@@ -490,14 +617,14 @@ h1 {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: #f6eef3;
+  background: var(--tint-1);
   font-size: 18px;
 }
 
 .tx:nth-child(3n+2) .icon,
-.date-group .tx:nth-child(3n+2) .icon { background: #eef6ff; }
+.date-group .tx:nth-child(3n+2) .icon { background: var(--tint-2); }
 .tx:nth-child(3n) .icon,
-.date-group .tx:nth-child(3n) .icon { background: #fff6e4; }
+.date-group .tx:nth-child(3n) .icon { background: var(--tint-3); }
 
 .main {
   min-width: 0;
@@ -536,7 +663,7 @@ h1 {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #c9cbd0;
+  color: var(--soft);
   font-size: 20px;
   line-height: 1;
 }
@@ -566,11 +693,9 @@ h1 {
   padding: 0 12px;
   transform: translateX(-50%);
   border-radius: 999px;
-  border: 1px solid #eceef1;
+  border: 1px solid var(--line);
   background: var(--card);
-  box-shadow:
-    0 12px 30px rgba(20, 24, 30, 0.12),
-    0 3px 10px rgba(20, 24, 30, 0.06);
+  box-shadow: var(--shadow-nav);
   transition: transform .5s cubic-bezier(0.34, 1.56, 0.64, 1);
   touch-action: pan-y;
 }
@@ -587,7 +712,7 @@ h1 {
   border: 0;
   border-radius: 17px;
   background: transparent;
-  color: #9aa1ab;
+  color: var(--muted);
   -webkit-tap-highlight-color: transparent;
   transition:
     color .28s cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -620,23 +745,19 @@ body.keyboard-open .bottom-nav { display: none; }
   margin-top: -28px;
   border: 0;
   border-radius: 50%;
-  background: var(--charcoal);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
   -webkit-tap-highlight-color: transparent;
   /* neutral lift, not a coloured glow: the design's button reads as a solid
      dark disc sitting above the pill */
-  box-shadow:
-    0 12px 24px rgba(20, 24, 30, 0.28),
-    0 3px 8px rgba(20, 24, 30, 0.18);
+  box-shadow: var(--shadow-lift);
   transition:
     transform .3s cubic-bezier(0.34, 1.56, 0.64, 1),
     box-shadow .3s ease;
 }
 
 .nav-add.nav-active {
-  box-shadow:
-    0 16px 30px rgba(20, 24, 30, 0.34),
-    0 4px 10px rgba(20, 24, 30, 0.2);
+  box-shadow: var(--shadow-lift-active);
 }
 
 .nav-add:active { transform: translateY(-2px) scale(0.94); }
@@ -675,7 +796,7 @@ body.keyboard-open .bottom-nav { display: none; }
   box-shadow: var(--shadow);
 }
 
-.dark-label { color: #8a8e95; }
+.dark-label { color: var(--muted); }
 
 .analytics-card > strong { margin-bottom: 4px; }
 
@@ -685,7 +806,7 @@ body.keyboard-open .bottom-nav { display: none; }
   margin: 18px 0 8px;
   padding: 5px;
   border-radius: 14px;
-  background: #eeeef1;
+  background: var(--subtle);
 }
 
 .analytics-range button {
@@ -694,14 +815,14 @@ body.keyboard-open .bottom-nav { display: none; }
   border-radius: 11px;
   padding: 9px;
   background: transparent;
-  color: #8e9299;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 650;
 }
 
 .analytics-range .range-active {
-  background: var(--charcoal);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .chart-wrap {
@@ -718,14 +839,25 @@ body.keyboard-open .bottom-nav { display: none; }
 .chart-tooltip {
   font-size: 11px;
   font-weight: 700;
-  fill: #fff;
+  fill: var(--on-accent);
 }
 
 .chart-value {
   font-size: 9px;
   font-weight: 700;
-  fill: #151922;
+  fill: var(--ink);
 }
+
+/* The chart is built as an SVG string in renderChart(), so its colours have
+   to live here rather than inline -- otherwise the line stays near-black and
+   vanishes against a dark page. */
+.chart-fill-stop { stop-color: var(--ink); }
+.chart-line { stroke: var(--ink); }
+.chart-guide { stroke: var(--soft); }
+.chart-dot { fill: var(--ink); }
+.chart-dot-core { fill: var(--card); }
+.chart-badge { fill: var(--accent); }
+.chart-axis { fill: var(--muted); }
 
 .analytics-stats {
   display: flex;
@@ -750,7 +882,7 @@ body.keyboard-open .bottom-nav { display: none; }
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #f3f0f8;
+  background: var(--tint-4);
   font-size: 18px;
 }
 
@@ -779,7 +911,7 @@ body.keyboard-open .bottom-nav { display: none; }
 .add-form label {
   display: block;
   margin-top: 14px;
-  color: #5b6068;
+  color: var(--label);
   font-size: 12px;
   font-weight: 650;
 }
@@ -791,10 +923,10 @@ body.keyboard-open .bottom-nav { display: none; }
   width: 100%;
   height: 48px;
   margin-top: 8px;
-  border: 1px solid #e3e5e9;
+  border: 1px solid var(--line);
   border-radius: 14px;
   padding: 0 14px;
-  background: #fafbfc;
+  background: var(--field);
   color: var(--ink);
   outline: none;
   font-size: 16px;
@@ -802,11 +934,11 @@ body.keyboard-open .bottom-nav { display: none; }
 
 .add-form input:focus,
 .add-form select:focus {
-  border-color: var(--charcoal);
-  background: #fff;
+  border-color: var(--accent);
+  background: var(--field-focus);
 }
 
-.add-form input::placeholder { color: #b3b7bd; }
+.add-form input::placeholder { color: var(--soft); }
 
 .add-summary {
   display: grid;
@@ -814,7 +946,7 @@ body.keyboard-open .bottom-nav { display: none; }
   margin-top: 20px;
   padding: 16px;
   border-radius: 16px;
-  background: #f4f5f7;
+  background: var(--subtle);
 }
 
 .add-summary div {
@@ -847,8 +979,8 @@ body.keyboard-open .bottom-nav { display: none; }
   border: 0;
   border-radius: 16px;
   padding: 15px;
-  background: #fff;
-  color: #12161c;
+  background: var(--card);
+  color: var(--ink);
   font-weight: 800;
   font-size: 15px;
 }
@@ -857,9 +989,9 @@ body.keyboard-open .bottom-nav { display: none; }
    chip -- this was the last violet in the app, as a pair of literal hex
    values rather than the token, which is how it outlived the token. */
 .save-expense {
-  background: var(--charcoal);
-  color: #fff;
-  box-shadow: 0 10px 22px rgba(20, 24, 30, 0.22);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-lift);
 }
 
 .save-expense:disabled { opacity: 0.55; }
@@ -881,18 +1013,18 @@ body.keyboard-open .bottom-nav { display: none; }
   place-items: center;
   width: 88px;
   height: 88px;
-  border: 5px solid #fff;
+  border: 5px solid var(--card);
   border-radius: 50%;
-  background: linear-gradient(145deg, #2b323a, #6a747f);
-  box-shadow: 0 12px 28px rgba(28, 33, 40, 0.18);
+  background: linear-gradient(145deg, var(--avatar-from), var(--avatar-to));
+  box-shadow: var(--shadow-lift);
   overflow: hidden;
-  color: #fff;
+  color: var(--on-dark);
   font-size: 32px;
   font-weight: 800;
 }
 
 .profile-avatar.has-photo {
-  background-color: #2b323a;
+  background-color: var(--avatar-from);
 }
 
 .avatar-edit {
@@ -903,11 +1035,11 @@ body.keyboard-open .bottom-nav { display: none; }
   place-items: center;
   width: 30px;
   height: 30px;
-  border: 3px solid #fff;
+  border: 3px solid var(--card);
   border-radius: 50%;
   background: var(--orange);
-  color: #14181e;
-  box-shadow: 0 4px 10px rgba(28, 33, 40, 0.25);
+  color: var(--hero-to);
+  box-shadow: var(--shadow);
 }
 
 .profile-avatar-row {
@@ -958,8 +1090,8 @@ body.keyboard-open .bottom-nav { display: none; }
 
 .profile-action {
   margin-top: 22px;
-  background: var(--charcoal);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .profile-key {
@@ -991,15 +1123,15 @@ body.keyboard-open .bottom-nav { display: none; }
   font-size: 11px;
   padding: 1px 5px;
   border-radius: 6px;
-  background: rgba(20, 24, 30, 0.06);
+  background: var(--subtle);
 }
 
 .profile-key-input {
   width: 100%;
-  border: 1px solid var(--line, #e6e8eb);
+  border: 1px solid var(--line);
   border-radius: 14px;
   padding: 13px 14px;
-  background: #f7f8f9;
+  background: var(--field);
   color: var(--text);
   outline: none;
   font-size: 14px;
@@ -1007,8 +1139,8 @@ body.keyboard-open .bottom-nav { display: none; }
 }
 
 .profile-key-input:focus {
-  border-color: #202224;
-  background: #fff;
+  border-color: var(--accent);
+  background: var(--field-focus);
 }
 
 .profile-key-status {
@@ -1019,8 +1151,8 @@ body.keyboard-open .bottom-nav { display: none; }
   color: var(--muted);
 }
 
-.profile-key-status.ok { color: #2f9d63; }
-.profile-key-status.err { color: #d64545; }
+.profile-key-status.ok { color: var(--ok-text); }
+.profile-key-status.err { color: var(--err-text); }
 
 .profile-key-actions {
   display: grid;
@@ -1033,22 +1165,22 @@ body.keyboard-open .bottom-nav { display: none; }
 }
 
 .profile-action-secondary {
-  background: #e9ecee;
-  color: #2a2f34;
+  background: var(--chip);
+  color: var(--ink);
 }
 
 @media (min-width: 700px) {
-  html { background: #2f3640; }
+  html { background: var(--frame); }
 
   body {
     padding: 28px 0;
-    background: #2f3640;
+    background: var(--frame);
   }
 
   .app {
     min-height: calc(100dvh - 56px);
     border-radius: 36px;
-    box-shadow: 0 30px 70px rgba(14, 18, 24, 0.35);
+    box-shadow: var(--shadow-frame);
     overflow: hidden;
   }
 
@@ -1090,13 +1222,13 @@ body.keyboard-open .bottom-nav { display: none; }
 }
 
 .budget-alert.warn {
-  background: #fff4e0;
-  color: #9a6a00;
+  background: var(--tint-amber);
+  color: var(--amber-ink);
 }
 
 .budget-alert.danger {
-  background: #fdeaea;
-  color: #c62828;
+  background: var(--tint-red);
+  color: var(--red-ink);
 }
 
 .budget-set-link {
@@ -1112,7 +1244,7 @@ body.keyboard-open .bottom-nav { display: none; }
   margin-bottom: 4px;
   padding: 14px;
   border-radius: 16px;
-  background: #f4f5f7;
+  background: var(--subtle);
 }
 
 .budget-remaining-icon {
@@ -1122,7 +1254,7 @@ body.keyboard-open .bottom-nav { display: none; }
   height: 44px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: #f0f1f4;
+  background: var(--subtle);
   color: var(--ink);
 }
 
@@ -1184,7 +1316,7 @@ body.keyboard-open .bottom-nav { display: none; }
   padding: 12px 0;
 }
 
-.budget-row + .budget-row { border-top: 1px solid #f0f1f3; }
+.budget-row + .budget-row { border-top: 1px solid var(--line); }
 
 .budget-row-icon {
   display: grid;
@@ -1195,9 +1327,9 @@ body.keyboard-open .bottom-nav { display: none; }
   border-radius: 50%;
 }
 
-.budget-row-icon.green { background: #e8faf0; color: var(--green); }
-.budget-row-icon.orange { background: #fff4e3; color: #f59e0b; }
-.budget-row-icon.ink { background: #f0f1f4; color: var(--ink); }
+.budget-row-icon.green { background: var(--tint-green); color: var(--green); }
+.budget-row-icon.orange { background: var(--tint-amber); color: var(--amber-text); }
+.budget-row-icon.ink { background: var(--subtle); color: var(--ink); }
 
 .budget-row-main { flex: 1; min-width: 0; }
 
@@ -1226,12 +1358,12 @@ body.keyboard-open .bottom-nav { display: none; }
   font-weight: 650;
 }
 
-.budget-chevron { flex-shrink: 0; color: #c8cbd1; }
+.budget-chevron { flex-shrink: 0; color: var(--soft); }
 
 .budget-track {
   height: 7px;
   border-radius: 99px;
-  background: #eceef0;
+  background: var(--chip);
   overflow: hidden;
 }
 
@@ -1244,7 +1376,7 @@ body.keyboard-open .bottom-nav { display: none; }
 }
 
 .budget-track.over {
-  background: #fbe4e4;
+  background: var(--tint-red);
 }
 
 .budget-track.over i {
@@ -1267,7 +1399,7 @@ body.keyboard-open .bottom-nav { display: none; }
 .modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(14, 18, 24, 0.5);
+  background: var(--backdrop);
 }
 
 .modal-card {
@@ -1277,7 +1409,7 @@ body.keyboard-open .bottom-nav { display: none; }
   padding: 24px 20px 20px;
   border-radius: 24px;
   background: var(--card);
-  box-shadow: 0 24px 60px rgba(14, 18, 24, 0.4);
+  box-shadow: var(--shadow-modal);
   animation: fadeIn .2s ease;
 }
 
@@ -1308,17 +1440,17 @@ body.keyboard-open .bottom-nav { display: none; }
   justify-content: space-between;
   padding: 8px 12px;
   border-radius: 12px;
-  background: #f4f5f7;
+  background: var(--subtle);
   font-size: 13px;
 }
 
-.limit-period span { color: #5b6068; font-weight: 600; }
+.limit-period span { color: var(--label); font-weight: 600; }
 .limit-period strong { color: var(--ink); }
 
 .limit-period-muted {
   padding: 8px 12px;
   border-radius: 12px;
-  background: #f4f5f7;
+  background: var(--subtle);
   font-size: 12.5px;
   color: var(--muted);
 }
@@ -1327,16 +1459,16 @@ body.keyboard-open .bottom-nav { display: none; }
   display: block;
   font-size: 13px;
   font-weight: 650;
-  color: #5b6068;
+  color: var(--label);
 }
 
 .limit-input {
   width: 100%;
   margin-top: 8px;
   padding: 14px 14px;
-  border: 1px solid #e3e5e9;
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: #fafbfc;
+  background: var(--field);
   font-size: 18px;
   font-weight: 800;
   color: var(--ink);
@@ -1345,7 +1477,7 @@ body.keyboard-open .bottom-nav { display: none; }
 .limit-input:focus {
   outline: none;
   border-color: var(--orange);
-  background: #fff;
+  background: var(--field-focus);
 }
 
 .limit-actions {
@@ -1369,8 +1501,8 @@ body.keyboard-open .bottom-nav { display: none; }
   height: 30px;
   border: 0;
   border-radius: 50%;
-  background: #eef0f2;
-  color: #5b6068;
+  background: var(--chip);
+  color: var(--label);
   font-size: 13px;
 }
 
@@ -1422,7 +1554,7 @@ body.keyboard-open .bottom-nav { display: none; }
   gap: 4px 10px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: #f4f5f7;
+  background: var(--subtle);
   text-align: left;
 }
 
@@ -1462,7 +1594,7 @@ body.keyboard-open .bottom-nav { display: none; }
   padding: 8px 10px;
   border: 0;
   border-radius: 10px;
-  background: #e7e9ed;
+  background: var(--chip);
   color: var(--ink);
   font: inherit;
   font-size: 12px;
@@ -1476,7 +1608,7 @@ body.keyboard-open .bottom-nav { display: none; }
 }
 
 .recurring-item-actions .danger {
-  background: #fdeaea;
+  background: var(--tint-red);
   color: var(--danger);
 }
 

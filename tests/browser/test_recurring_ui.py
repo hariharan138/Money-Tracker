@@ -24,6 +24,25 @@ CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"
 fails = []
 
 
+def luminance(css_color):
+    """Relative luminance of an rgb()/rgba() string, 0 (black) to 1 (white).
+    Used to assert a surface is actually dark rather than eyeballing hexes."""
+    nums = [float(n) for n in re.findall(r"[\d.]+", css_color or "")][:3]
+    if len(nums) < 3:
+        return None
+    r, g, b = (n / 255 for n in nums)
+    channel = lambda c: c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def contrast(fg, bg):
+    a, b = luminance(fg), luminance(bg)
+    if a is None or b is None:
+        return 0
+    lo, hi = sorted((a, b))
+    return (hi + 0.05) / (lo + 0.05)
+
+
 def wait_for(url, what, timeout=25):
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -307,6 +326,106 @@ try:
      check("it matches the app's other primary buttons",
            lambda: (_ for _ in ()).throw(AssertionError(f"{save_color} != {action_color}"))
            if save_color != action_color else None)
+
+     print("\n11. Dark and light mode")
+     page.click('[data-tab="transactions"]')
+     page.wait_for_timeout(400)
+     check("the toggle lives on the Transactions tab",
+           lambda: expect(page.locator('#themeToggle [data-theme-choice="dark"]')).to_be_visible())
+
+     page.click('[data-theme-choice="dark"]')
+     page.wait_for_timeout(600)
+     theme = page.evaluate("document.documentElement.dataset.theme")
+     check("tapping Dark switches the theme",
+           lambda: (_ for _ in ()).throw(AssertionError(theme)) if theme != "dark" else None)
+
+     body_bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
+     check("the page itself goes dark",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{body_bg} lum={luminance(body_bg):.2f}"))
+           if luminance(body_bg) > 0.15 else None)
+
+     meta = page.evaluate(
+         "document.querySelector('meta[name=\"theme-color\"]').getAttribute('content')")
+     check("the browser/status bar colour follows",
+           lambda: (_ for _ in ()).throw(AssertionError(meta)) if meta != "#101317" else None)
+
+     # Nothing may be left behind on a light surface. Sampling computed values
+     # beats eyeballing: a token missed in one rule shows up here.
+     surfaces = page.evaluate("""
+       ['body', '.app', '.tx', '.controls input', '.bottom-nav', '.add-form',
+        '.profile-card', '.filter-selects select', '.add-summary', '.recurring-list',
+        '.modal-card', '.budget', '.stat']
+         .map(sel => { const el = document.querySelector(sel);
+                       return [sel, el ? getComputedStyle(el).backgroundColor : null]; })
+     """)
+     stranded = [(sel, bg) for sel, bg in surfaces
+                 if bg and luminance(bg) is not None and luminance(bg) > 0.25]
+     check(f"no light surfaces stranded in dark ({len(surfaces)} sampled)",
+           lambda: (_ for _ in ()).throw(AssertionError(f"still light: {stranded}"))
+           if stranded else None)
+
+     # The specific bug class: the chart draws itself in JS, so a hardcoded
+     # near-black line would be invisible here.
+     page.click('[data-tab="analytics"]')
+     page.wait_for_timeout(700)
+     line = page.evaluate(
+         "(el => el ? getComputedStyle(el).stroke : 'missing')(document.querySelector('.chart-line'))")
+     card_bg = page.evaluate("getComputedStyle(document.querySelector('.analytics-card')).backgroundColor")
+     ratio = contrast(line, card_bg)
+     check(f"the chart line stays visible in dark (contrast {ratio:.1f}:1)",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{line} on {card_bg}"))
+           if ratio < 3 else None)
+
+     text_ratio = contrast(
+         page.evaluate("getComputedStyle(document.querySelector('h1')).color"), body_bg)
+     check(f"heading text clears AA in dark ({text_ratio:.1f}:1)",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{text_ratio:.2f}:1"))
+           if text_ratio < 4.5 else None)
+
+     page.reload(wait_until="networkidle")
+     page.wait_for_timeout(800)
+     after = page.evaluate("document.documentElement.dataset.theme")
+     check("the choice survives a reload",
+           lambda: (_ for _ in ()).throw(AssertionError(after)) if after != "dark" else None)
+
+     page.click('[data-tab="transactions"]')
+     page.wait_for_timeout(400)
+     page.click('[data-theme-choice="light"]')
+     page.wait_for_timeout(600)
+     back = page.evaluate("document.documentElement.dataset.theme")
+     light_bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
+     check("and switches back to light",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{back} / {light_bg}"))
+           if back != "light" or luminance(light_bg) < 0.8 else None)
+
+     print("\n12. It follows the system until you choose")
+     for scheme, expected in (("dark", "dark"), ("light", "light")):
+         fresh = browser.new_context(viewport={"width": 390, "height": 844},
+                                     color_scheme=scheme)   # no stored choice
+         fp = fresh.new_page()
+         fp.goto(f"{WEB}/?key={KEY}", wait_until="networkidle")
+         fp.wait_for_timeout(500)
+         got = fp.evaluate("document.documentElement.dataset.theme")
+         check(f"a fresh install on a {scheme} phone starts {expected}",
+               lambda g=got, e=expected: (_ for _ in ()).throw(AssertionError(g)) if g != e else None)
+         fresh.close()
+
+     # An explicit choice has to beat the system setting, not lose to it.
+     fresh = browser.new_context(viewport={"width": 390, "height": 844}, color_scheme="dark")
+     fp = fresh.new_page()
+     fp.goto(f"{WEB}/?key={KEY}", wait_until="networkidle")
+     fp.evaluate("localStorage.setItem('expenses-theme', 'light')")
+     fp.reload(wait_until="networkidle")
+     fp.wait_for_timeout(500)
+     chosen = fp.evaluate("document.documentElement.dataset.theme")
+     check("an explicit choice overrides the system preference",
+           lambda: (_ for _ in ()).throw(AssertionError(chosen)) if chosen != "light" else None)
+     # ...and it is applied before first paint, so there is no flash.
+     flash = fp.evaluate(
+         "document.documentElement.dataset.theme === 'light' && !!document.querySelector('script')")
+     check("the theme is resolved by an inline script, before paint",
+           lambda: (_ for _ in ()).throw(AssertionError("no pre-paint script")) if not flash else None)
+     fresh.close()
 
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
      check(f"no console/page errors ({len(real_errors)})",
