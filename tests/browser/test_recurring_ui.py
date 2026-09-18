@@ -639,6 +639,82 @@ try:
 
      touch_ctx.close()
 
+     print("\n18. Bundled category icons")
+     icon_ctx = browser.new_context(viewport={"width": 390, "height": 900})
+     ip = icon_ctx.new_page()
+     external = []
+     ip.on("request", lambda r: external.append(r.url)
+           if r.resource_type == "image" and "127.0.0.1" not in r.url else None)
+     ip.goto(f"{WEB}/?key={KEY}", wait_until="networkidle")
+     for cat in ("Food", "Groceries", "Rent", "Coffee", "Skydiving", "Food"):
+         ip.request.post(f"http://127.0.0.1:{API_PORT}/api/expenses",
+                         headers={"X-API-Key": KEY, "Content-Type": "application/json"},
+                         data={"amount": 150, "category": cat, "payment_method": "UPI"})
+     ip.reload(wait_until="networkidle")
+     ip.click('[data-tab="transactions"]')
+     ip.wait_for_timeout(1200)
+
+     rows = ip.evaluate("""
+       [...document.querySelectorAll('#list .tx')].map(tx => {
+         const disc = tx.querySelector('.icon');
+         return { name: tx.querySelector('.name').textContent.trim(),
+                  tone: [...disc.classList].find(c => c.startsWith('tone-')) || null,
+                  svg: disc.querySelectorAll('svg').length,
+                  text: disc.textContent.trim() };
+       })
+     """)
+     check(f"every row draws an SVG icon ({len(rows)} rows)",
+           lambda: (_ for _ in ()).throw(AssertionError(str(rows)))
+           if not rows or any(r["svg"] != 1 for r in rows) else None)
+     check("the emoji are gone",
+           lambda: (_ for _ in ()).throw(AssertionError(
+               str([r for r in rows if r["text"]])))
+           if any(r["text"] for r in rows) else None)
+     check("each disc carries a tone",
+           lambda: (_ for _ in ()).throw(AssertionError(str(rows)))
+           if any(r["tone"] is None for r in rows) else None)
+
+     # The behaviour that changed: the tone used to come from the row's
+     # position (nth-child), so one category looked different depending on
+     # where it landed. Two Food rows in different positions prove it does not.
+     foods = {r["tone"] for r in rows if r["name"] == "Food"}
+     check(f"a category looks the same wherever it appears ({len(foods)} tone)",
+           lambda: (_ for _ in ()).throw(AssertionError(f"Food got {foods}"))
+           if len(foods) != 1 else None)
+     tones = {r["name"]: r["tone"] for r in rows}
+     check("known categories get their own tone",
+           lambda: (_ for _ in ()).throw(AssertionError(str(tones)))
+           if tones.get("Groceries") != "tone-green" or tones.get("Coffee") != "tone-amber"
+           else None)
+     check("an unknown category still gets an icon, not a blank disc",
+           lambda: (_ for _ in ()).throw(AssertionError(str(tones)))
+           if tones.get("Skydiving") != "tone-ink" else None)
+
+     # The whole point of bundling: nothing is fetched.
+     check(f"no image is fetched from anywhere ({len(external)} external)",
+           lambda: (_ for _ in ()).throw(AssertionError(str(external[:3])))
+           if external else None)
+
+     # Top spending reuses the same disc rather than a second icon system.
+     ip.click('[data-tab="analytics"]')
+     ip.wait_for_timeout(700)
+     check("Top spending uses the same icons",
+           lambda: expect(ip.locator(".top-item .icon svg").first).to_be_attached())
+
+     # Tokens carry the discs into dark mode with no extra palette.
+     light_disc = ip.evaluate(
+         "getComputedStyle(document.querySelector('#list .icon')).backgroundColor")
+     ip.click('[data-tab="profile"]')
+     ip.wait_for_timeout(400)
+     ip.click('#themeToggleProfile [data-theme-choice="dark"]')
+     ip.wait_for_timeout(700)
+     dark_disc = ip.evaluate(
+         "getComputedStyle(document.querySelector('#list .icon')).backgroundColor")
+     check(f"the discs darken with the theme ({light_disc} -> {dark_disc})",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{light_disc} == {dark_disc}"))
+           if light_disc == dark_disc or luminance(dark_disc) > 0.3 else None)
+     icon_ctx.close()
+
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
      check(f"no console/page errors ({len(real_errors)})",
            lambda: (_ for _ in ()).throw(AssertionError(real_errors[0])) if real_errors else None)

@@ -97,11 +97,49 @@ if (keyFromUrl) {
 }
 let KEY = keyFromUrl || readStoredApiKey();
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
-const icons = {
-  food: '🍜', groceries: '🛒', grocery: '🛒', travel: '✈️', cab: '🚕', fuel: '⛽',
-  bills: '🧾', rent: '🏠', health: '💊', fitness: '🏋️', entertainment: '🎬',
-  shopping: '🛍️', coffee: '☕', education: '📚', gifts: '🎁', expense: '◉',
+/* —— Category icons ——
+ * Drawn here rather than fetched: bundled means they render instantly, work
+ * offline, and no third party ever learns what you spend on.
+ *
+ * Three tones, all from the existing palette -- green for what sustains you,
+ * amber for what you chose, ink for what you owe. No new hues: the app is
+ * deliberately monochrome apart from green and amber.
+ *
+ * The tone is keyed to the category, so a category looks the same wherever it
+ * appears. The disc used to be tinted by row position, which meant the same
+ * Food row was a different colour depending on where it landed in the list. */
+const ICON_SET = {
+  food: ['amber', '<path d="M4 11h16a8 8 0 0 1-8 8 8 8 0 0 1-8-8z"/><path d="M6.5 8.2c0-1.4 1-1.6 1-2.7M10 7.6c0-1.6 1.2-1.9 1.2-3.1M14 8.2c0-1.4 1-1.6 1-2.7"/>'],
+  groceries: ['green', '<path d="M3 4h2l2.2 10.4a1.6 1.6 0 0 0 1.6 1.3h7.7a1.6 1.6 0 0 0 1.6-1.2L20 8H6"/><circle cx="9.5" cy="19" r="1.3"/><circle cx="17" cy="19" r="1.3"/>'],
+  travel: ['ink', '<path d="M12 3c.85 0 1.5 1.1 1.5 2.4v2.9l6.6 3.8v2l-6.6-2v3.6l2.2 1.6v1.5L12 17.7l-3.7 1.1v-1.5l2.2-1.6v-3.6l-6.6 2v-2l6.6-3.8V5.4C10.5 4.1 11.15 3 12 3z"/>'],
+  cab: ['ink', '<path d="M5 16.5h14M6.5 16.5V19a.8.8 0 0 1-.8.8H5a.8.8 0 0 1-.8-.8v-2.5M19.8 16.5V19a.8.8 0 0 1-.8.8h-.7a.8.8 0 0 1-.8-.8v-2.5"/><path d="M4.2 16.5v-4l1.9-4.3a1.4 1.4 0 0 1 1.3-.8h9.2a1.4 1.4 0 0 1 1.3.8l1.9 4.3v4z"/><path d="M6.6 12.4h10.8"/>'],
+  fuel: ['ink', '<path d="M5 20.5h9V6a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 5 6z"/><path d="M5 11.5h9"/><path d="M14 9h2.8a1.2 1.2 0 0 1 1.2 1.2v6.1a1.6 1.6 0 0 0 3.2 0V11l-2-2.4"/>'],
+  bills: ['ink', '<path d="M6 3.5h12v17l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4-2 1.4z"/><path d="M9 8h6M9 12h6"/>'],
+  rent: ['ink', '<path d="M3.8 10.3 12 4l8.2 6.3V20a1 1 0 0 1-1 1H4.8a1 1 0 0 1-1-1z"/><path d="M9.6 21v-6.2h4.8V21"/>'],
+  health: ['green', '<path d="M12 20.3s-7.4-4.5-7.4-9.6A4.4 4.4 0 0 1 12 7.7a4.4 4.4 0 0 1 7.4 3c0 5.1-7.4 9.6-7.4 9.6z"/><path d="M12 11v4M10 13h4"/>'],
+  fitness: ['green', '<path d="M4 9.5v5M7 7.5v9M17 7.5v9M20 9.5v5M7 12h10"/>'],
+  entertainment: ['amber', '<rect x="3" y="5" width="18" height="14" rx="2.2"/><path d="M7 5v14M17 5v14M3 12h18M3 8.5h4M3 15.5h4M17 8.5h4M17 15.5h4"/>'],
+  shopping: ['amber', '<path d="M5.5 8h13l-1 12.2a1 1 0 0 1-1 .9H7.5a1 1 0 0 1-1-.9z"/><path d="M9 10V6.5a3 3 0 0 1 6 0V10"/>'],
+  coffee: ['amber', '<path d="M4.5 8h12v6.5a4.5 4.5 0 0 1-4.5 4.5H9a4.5 4.5 0 0 1-4.5-4.5z"/><path d="M16.5 9.5h1.8a2.6 2.6 0 0 1 0 5.2h-1.8"/><path d="M8 3.4v1.8M12 3.4v1.8"/>'],
+  education: ['ink', '<path d="M3.6 6.2A12 12 0 0 1 12 7.6a12 12 0 0 1 8.4-1.4v11A12 12 0 0 0 12 18.6a12 12 0 0 0-8.4-1.4z"/><path d="M12 7.6v11"/>'],
+  gifts: ['amber', '<rect x="3.4" y="8.6" width="17.2" height="4.2" rx="1"/><path d="M5 12.8v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7M12 8.6v12.2"/><path d="M12 8.6S10.8 4 8.6 4a2.3 2.3 0 0 0 0 4.6zM12 8.6S13.2 4 15.4 4a2.3 2.3 0 0 1 0 4.6z"/>'],
+  expense: ['ink', '<path d="M3.5 8.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2"/><rect x="3.5" y="8.5" width="17" height="10.5" rx="2"/><path d="M15.4 13.75h2.6"/>'],
 };
+const ICON_FALLBACK = ['ink', '<path d="M4 11.3V5.4a1.4 1.4 0 0 1 1.4-1.4h5.9a1.4 1.4 0 0 1 1 .4l6.3 6.3a1.4 1.4 0 0 1 0 2l-5.9 5.9a1.4 1.4 0 0 1-2 0L4.4 12.3a1.4 1.4 0 0 1-.4-1z"/><circle cx="8.3" cy="8.3" r="1.2"/>'];
+
+/** Grocery is a common spelling of the same thing. */
+const ICON_ALIAS = { grocery: 'groceries', groceries: 'groceries' };
+
+function categoryIcon(category) {
+  const name = (category || '').trim().toLowerCase();
+  return ICON_SET[ICON_ALIAS[name] || name] || ICON_FALLBACK;
+}
+
+/** The tinted disc plus its glyph, used by the list and by Top spending. */
+function iconMarkup(category, size = 21) {
+  const [tone, path] = categoryIcon(category);
+  return `<div class="icon tone-${tone}"><svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg></div>`;
+}
 
 let expenses = [];
 let monthlyLimit = null;
@@ -203,13 +241,13 @@ function groupByDate(items) {
 }
 
 function row(item, compact = false) {
-  const icon = icons[(item.category || '').trim().toLowerCase()] || '🏷️';
+  const icon = iconMarkup(item.category);
   const time = dateOf(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   // Expenses logged from the app carry no description; skip the line rather
   // than repeating "Expense" under the category.
   const desc = (item.description || item.notes || '').trim();
   return `<article class="tx${compact ? ' compact' : ''}">
-    <div class="icon">${icon}</div>
+    ${icon}
     <div class="main">
       <div class="name">${escapeHtml(item.category || 'Expense')}</div>
       ${desc ? `<div class="desc">${escapeHtml(desc)}</div>` : ''}
@@ -1000,7 +1038,7 @@ function render() {
     .slice(0, 4)
     .map(item => `
       <div class="top-item">
-        <span>${icons[(item.category || '').trim().toLowerCase()] || '🏷️'}</span>
+        ${iconMarkup(item.category, 19)}
         <div>
           <strong>${escapeHtml(item.category || 'Expense')}</strong>
           <small>${escapeHtml(item.description || item.payment_method || '')}</small>
