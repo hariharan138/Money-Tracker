@@ -218,23 +218,6 @@ h1 {
 .page-head { margin-bottom: 22px; }
 
 
-.reload-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex-shrink: 0;
-  height: 40px;
-  margin-top: 2px;
-  border: 0;
-  border-radius: 999px;
-  padding: 0 14px 0 12px;
-  background: var(--card);
-  color: var(--ink);
-  box-shadow: var(--shadow);
-  font-size: 13px;
-  font-weight: 700;
-}
-
 .topbar-actions {
   display: flex;
   align-items: flex-start;
@@ -261,13 +244,6 @@ h1 {
 .dash-avatar.has-photo {
   background-color: var(--avatar-from);
 }
-
-.reload-btn:active { transform: scale(0.97); }
-.reload-btn.is-loading {
-  opacity: 0.65;
-  pointer-events: none;
-}
-.reload-btn.is-loading svg { animation: spin .8s linear infinite; }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
@@ -1623,38 +1599,63 @@ body.keyboard-open .bottom-nav { display: none; }
 
 /* —— Pull to refresh ——
    The browser's own is disabled (overscroll-behavior: none on body, so the
-   page never rubber-bands), so this is the whole gesture: a disc that follows
-   your finger down from the top of any tab and spins while it reloads. */
+   page never rubber-bands), so this is the whole gesture: the content moves
+   down with your finger and a disc rides in the gap it opens. */
 .pull-refresh {
   position: fixed;
-  top: calc(10px + var(--safe-t));
+  top: calc(6px + var(--safe-t));
   left: 50%;
   z-index: 40;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: var(--card);
-  color: var(--ink);
+  color: var(--muted);
   box-shadow: var(--shadow-nav);
   opacity: 0;
   pointer-events: none;
-  /* starts tucked above the top edge */
-  transform: translate(-50%, -52px);
+  /* At rest it sits exactly one disc above the content edge, which is where
+     a pull of zero puts it -- so the first frame moves rather than jumps. */
+  transform: translate(-50%, -44px) scale(0.7);
 }
 
-/* While the finger is down the position is set inline, frame by frame, so
-   the transition has to be off or it lags behind the drag. */
+.pull-refresh svg {
+  /* Turned by the gesture, a half turn by the time it is ready to release. */
+  transform: rotate(var(--pull-turn, 0deg));
+}
+
+/* Past the threshold: the icon has turned, the disc firms up, and the colour
+   switches to the accent. That change is the "let go now" signal. */
+.pull-refresh.ready {
+  color: var(--ink);
+  box-shadow: var(--shadow-lift);
+}
+
+/* While the finger is down both pieces are positioned inline, frame by frame,
+   so the transition has to be off or it lags behind the drag. It is switched
+   on only for the spring back and the settle into the reload. */
+.pull-refresh.settling,
+.app.settling {
+  transition: transform .42s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+
 .pull-refresh.settling {
-  transition: transform .32s cubic-bezier(0.34, 1.56, 0.64, 1), opacity .25s ease;
+  transition: transform .42s cubic-bezier(0.22, 1.2, 0.36, 1), opacity .3s ease;
+}
+
+.pull-refresh.spinning {
+  color: var(--ink);
 }
 
 .pull-refresh.spinning svg {
-  animation: spin .8s linear infinite;
+  animation: spin .7s linear infinite;
+  transform: none;  /* the gesture's angle hands over to the animation */
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pull-refresh.settling { transition: opacity .2s ease; }
+  .pull-refresh.settling,
+  .app.settling { transition: opacity .2s ease; }
   .pull-refresh.spinning svg { animation: none; }
 }

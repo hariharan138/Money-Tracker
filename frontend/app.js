@@ -1050,7 +1050,6 @@ function updateAddPreview() {
 }
 
 async function load({ quiet = false } = {}) {
-  const reloadBtn = $('#reloadBtn');
   if (!hasApiConfiguration()) {
     setStatus('Set PRIMARY_API_URL and SECONDARY_API_URL in frontend/.env.local', 'err');
     syncProfileKeyUi('Backend URLs are not configured', 'err');
@@ -1066,7 +1065,6 @@ async function load({ quiet = false } = {}) {
   }
   if (!quiet) {
     setStatus('Loading expenses…', 'muted');
-    reloadBtn?.classList.add('is-loading');
   }
   try {
     const response = await apiFetch('/api/expenses?limit=1000', authed({ cache: 'no-store' }));
@@ -1097,8 +1095,6 @@ async function load({ quiet = false } = {}) {
     if (!quiet) setStatus(message, 'err');
     syncProfileKeyUi(message, 'err');
     return false;
-  } finally {
-    reloadBtn?.classList.remove('is-loading');
   }
 }
 
@@ -1264,7 +1260,6 @@ async function saveExpense(event) {
   }
 }
 
-$('#reloadBtn').onclick = () => load();
 $('#profileRefresh').onclick = () => load();
 $('#saveApiKey').onclick = saveApiKey;
 $('#clearApiKey').onclick = clearApiKey;
@@ -1307,47 +1302,78 @@ $$('[data-tab]').forEach(button => {
 
 /* —— Pull to refresh ——
  * Works on every tab, because "is my data current?" is a question you can ask
- * from any of them. Touch only: a mouse has the Reload button, and hijacking a
- * downward mouse drag would fight text selection.
+ * from any of them. Touch only: a mouse has no Reload button any more, but
+ * hijacking a downward mouse drag would fight text selection.
  *
  * Only starts when the page is already at the top, so it can never swallow a
- * scroll -- the mistake the nav's swipe handler made. */
-const PULL_TRIGGER_PX = 72;   // past this, releasing reloads
-const PULL_MAX_PX = 112;      // the disc stops following beyond this
-const PULL_START_PX = 8;      // slop, so a tap is not a pull
+ * scroll -- the mistake the nav's swipe handler made.
+ *
+ * The content moves with the finger and the disc rides in the gap it opens.
+ * The first version left the page still and floated a disc over the header:
+ * it read as something stuck on top of the app rather than part of it, it
+ * jumped 7px on the first frame (the resting and starting positions did not
+ * meet), and it spun the icon 288 degrees over a single pull. */
+const PULL_TRIGGER_PX = 72;    // past this, releasing reloads
+const PULL_MAX_PX = 150;       // the content stops following beyond this
+const PULL_START_PX = 6;       // slop, so a tap is not a pull
+const PULL_HOLD_PX = 56;       // where the content rests while reloading
+const PULL_RESIST = 0.5;       // content follows at half speed: it feels weighted
 const pullEl = $('#pullRefresh');
+const appEl = $('.app');
 let pullState = null;
 let refreshing = false;
 
-function movePullTo(distance, { settle = false } = {}) {
-  pullEl.classList.toggle('settling', settle);
-  if (distance <= 0) {
-    pullEl.style.transform = 'translate(-50%, -52px)';
-    pullEl.style.opacity = '0';
-    return;
-  }
-  // Resists as it goes, so the disc eases to a stop rather than tracking 1:1.
-  const eased = Math.min(distance, PULL_MAX_PX) * 0.62;
-  pullEl.style.transform = `translate(-50%, ${eased - 46}px) rotate(${distance * 2.4}deg)`;
-  pullEl.style.opacity = String(Math.min(1, distance / PULL_TRIGGER_PX));
+/** Eased travel for a raw finger distance. The slop is subtracted rather than
+ *  measured away, so the content starts from zero with no jump *and* the
+ *  distance the trigger compares against stays the true finger distance. Past
+ *  PULL_MAX the extra is heavily damped rather than clamped, so it never feels
+ *  like it hit a wall. */
+function pullTravel(distance) {
+  const pulled = Math.max(0, distance - PULL_START_PX);
+  const capped = Math.min(pulled, PULL_MAX_PX);
+  const overflow = Math.max(0, pulled - PULL_MAX_PX);
+  return capped * PULL_RESIST + overflow * 0.08;
 }
 
-function resetPull() {
-  pullState = null;
-  movePullTo(0, { settle: true });
+/** How close this pull is to triggering, 0 to 1. Drives the disc's fade, scale
+ *  and turn, so what you see is exactly what releasing will do -- it is the
+ *  same number the trigger tests. */
+function pullProgress(distance) {
+  return Math.min(1, Math.max(0, distance) / PULL_TRIGGER_PX);
+}
+
+/** One place that positions both pieces, so they can never disagree. */
+function paintPull(travel, { settle = false, progress = null } = {}) {
+  pullEl.classList.toggle('settling', settle);
+  appEl.classList.toggle('settling', settle);
+  appEl.style.transform = travel ? `translateY(${travel.toFixed(1)}px)` : '';
+  // The disc rides just above the content edge, so at rest it is exactly
+  // off-screen and the first frame of a pull moves it continuously from there.
+  const ratio = progress ?? 0;
+  pullEl.style.transform =
+    `translate(-50%, ${(travel - 44).toFixed(1)}px) scale(${(0.7 + ratio * 0.3).toFixed(3)})`;
+  pullEl.style.opacity = ratio.toFixed(3);
+  // A half turn by the time it is ready, not three and a half.
+  pullEl.style.setProperty('--pull-turn', `${(ratio * 180).toFixed(1)}deg`);
+  pullEl.classList.toggle('ready', ratio >= 1);
+}
+
+function resetPull({ settle = true } = {}) {
+  paintPull(0, { settle, progress: 0 });
 }
 
 async function runRefresh() {
   refreshing = true;
-  pullEl.classList.add('spinning', 'settling');
-  pullEl.style.transform = 'translate(-50%, 16px)';
-  pullEl.style.opacity = '1';
+  pullEl.classList.add('spinning');
+  // Hold the content down while it loads, then let it spring back: the gap is
+  // what makes the spinner look like it belongs to the page.
+  paintPull(PULL_HOLD_PX, { settle: true, progress: 1 });
   try {
     await load();
   } finally {
     refreshing = false;
-    pullEl.classList.remove('spinning');
-    movePullTo(0, { settle: true });
+    pullEl.classList.remove('spinning', 'ready');
+    resetPull();
   }
 }
 
@@ -1386,7 +1412,7 @@ document.addEventListener('touchmove', event => {
   pullState.dy = dy;
   // Stops the page scrolling under the gesture. Needs passive: false.
   if (event.cancelable) event.preventDefault();
-  movePullTo(dy);
+  paintPull(pullTravel(dy), { progress: pullProgress(dy) });
 }, { passive: false });
 
 function endPull() {
@@ -1394,7 +1420,7 @@ function endPull() {
   const { active, dy } = pullState;
   pullState = null;
   if (active && dy >= PULL_TRIGGER_PX) runRefresh();
-  else movePullTo(0, { settle: true });
+  else resetPull();
 }
 
 document.addEventListener('touchend', endPull);

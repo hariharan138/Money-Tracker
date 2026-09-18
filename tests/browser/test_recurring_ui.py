@@ -562,6 +562,81 @@ try:
          120, start=(nav_box["x"] + nav_box["width"] / 2, nav_box["y"] + 20)))
      check("a pull starting on the nav does not reload",
            lambda: (_ for _ in ()).throw(AssertionError("nav drag refreshed")) if on_nav else None)
+     print("\n16. How the pull actually moves")
+     tp.click('[data-tab="dashboard"]')
+     tp.wait_for_timeout(500)
+     tp.evaluate("window.scrollTo(0, 0)")
+
+     def app_shift():
+         """Vertical translate currently applied to the page content."""
+         return tp.evaluate("""
+           (() => { const m = getComputedStyle(document.querySelector('.app')).transform;
+                    if (!m || m === 'none') return 0;
+                    return Math.round(parseFloat(m.split(',')[5])); })()
+         """)
+
+     def disc_shift():
+         return tp.evaluate("""
+           (() => { const m = getComputedStyle(document.querySelector('#pullRefresh')).transform;
+                    if (!m || m === 'none') return null;
+                    return Math.round(parseFloat(m.split(',')[5])); })()
+         """)
+
+     # The content follows the finger -- the disc is part of the page, not a
+     # badge floating over the header.
+     touch_drag(90, release=False)
+     moved = app_shift()
+     check(f"the page content moves with the pull ({moved}px)",
+           lambda: (_ for _ in ()).throw(AssertionError(f"content did not move: {moved}px"))
+           if moved < 20 else None)
+     check("the disc travels with it",
+           lambda: (_ for _ in ()).throw(AssertionError(str(disc_shift())))
+           if disc_shift() is None or disc_shift() <= -44 else None)
+     check("past the threshold it signals 'let go'",
+           lambda: expect(tp.locator("#pullRefresh")).to_have_class(re.compile(r"\bready\b")))
+     cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+     tp.wait_for_timeout(1500)
+
+     # A pull that stops short must not claim to be ready...
+     touch_drag(34, release=False)
+     small = app_shift()
+     check(f"a small pull moves a small amount ({small}px)",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{small}px")) if small > 26 else None)
+     check("and does not signal 'let go'",
+           lambda: expect(tp.locator("#pullRefresh")).not_to_have_class(re.compile(r"\bready\b")))
+     cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+     tp.wait_for_timeout(1200)
+
+     # ...and everything returns to exactly where it started.
+     check(f"the content springs back to rest ({app_shift()}px)",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{app_shift()}px left over"))
+           if abs(app_shift()) > 1 else None)
+     check("and the disc is hidden again",
+           lambda: (_ for _ in ()).throw(AssertionError(
+               tp.evaluate("getComputedStyle(document.querySelector('#pullRefresh')).opacity")))
+           if float(tp.evaluate(
+               "getComputedStyle(document.querySelector('#pullRefresh')).opacity")) > 0.05 else None)
+
+     print("\n17. The Reload button is gone from Home")
+     check("no Reload button anywhere",
+           lambda: expect(tp.locator("#reloadBtn")).to_have_count(0))
+     check("the avatar it sat beside is still there",
+           lambda: expect(tp.locator("#dashAvatar")).to_be_visible())
+     # Visible is not enough: removing the Reload button's CSS took the
+     # avatar's rules with it once, and a square avatar is still "visible".
+     avatar = tp.evaluate("""
+       (() => { const s = getComputedStyle(document.querySelector('#dashAvatar'));
+                return [s.borderRadius, s.width, s.height, s.backgroundImage !== 'none']; })()
+     """)
+     check(f"and is still a round gradient disc ({avatar[0]}, {avatar[1]})",
+           lambda: (_ for _ in ()).throw(AssertionError(str(avatar)))
+           if avatar[0] == "0px" or avatar[1] != "40px" or not avatar[3] else None)
+     # Profile keeps its own Refresh data button; only Home's went.
+     tp.click('[data-tab="profile"]')
+     tp.wait_for_timeout(400)
+     check("Profile keeps Refresh data",
+           lambda: expect(tp.locator("#profileRefresh")).to_be_visible())
+
      touch_ctx.close()
 
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
