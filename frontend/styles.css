@@ -506,7 +506,7 @@ h1 {
 }
 
 /* The theme chips carry an icon beside their label */
-#themeToggle button {
+.theme-toggle button {
   display: inline-flex;
   align-items: center;
   justify-content: center;

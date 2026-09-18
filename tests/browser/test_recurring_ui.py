@@ -328,10 +328,10 @@ try:
            if save_color != action_color else None)
 
      print("\n11. Dark and light mode")
-     page.click('[data-tab="transactions"]')
+     page.click('[data-tab="profile"]')
      page.wait_for_timeout(400)
-     check("the toggle lives on the Transactions tab",
-           lambda: expect(page.locator('#themeToggle [data-theme-choice="dark"]')).to_be_visible())
+     check("the toggle lives on the Profile tab",
+           lambda: expect(page.locator('#themeToggleProfile [data-theme-choice="dark"]')).to_be_visible())
 
      page.click('[data-theme-choice="dark"]')
      page.wait_for_timeout(600)
@@ -388,7 +388,7 @@ try:
      check("the choice survives a reload",
            lambda: (_ for _ in ()).throw(AssertionError(after)) if after != "dark" else None)
 
-     page.click('[data-tab="transactions"]')
+     page.click('[data-tab="profile"]')
      page.wait_for_timeout(400)
      page.click('[data-theme-choice="light"]')
      page.wait_for_timeout(600)
@@ -427,46 +427,42 @@ try:
            lambda: (_ for _ in ()).throw(AssertionError("no pre-paint script")) if not flash else None)
      fresh.close()
 
-     print("\n13. The Profile copy of the theme control")
+     print("\n13. The theme control lives only on Profile")
      page.click('[data-tab="profile"]')
      page.wait_for_timeout(500)
-     check("Profile has an Appearance control",
+     check("Profile has the Appearance control",
            lambda: expect(page.locator('#themeToggleProfile')).to_be_visible())
-     check("both copies exist", lambda: expect(page.locator('.theme-toggle')).to_have_count(2))
+     # One control, not two: a second copy elsewhere could disagree with it.
+     check("there is exactly one theme control",
+           lambda: expect(page.locator('.theme-toggle')).to_have_count(1))
+     check("the Transactions tab no longer carries one",
+           lambda: expect(page.locator('[data-panel="transactions"] .theme-toggle')
+                          ).to_have_count(0))
 
-     # Switch from Profile, and the Transactions copy must agree without a
-     # reload -- two controls disagreeing is worse than one control.
      page.click('#themeToggleProfile [data-theme-choice="dark"]')
      page.wait_for_timeout(600)
+     theme_now = page.evaluate("document.documentElement.dataset.theme")
      check("switching from Profile changes the theme",
-           lambda: (_ for _ in ()).throw(AssertionError(
-               page.evaluate("document.documentElement.dataset.theme")))
-           if page.evaluate("document.documentElement.dataset.theme") != "dark" else None)
-     pressed = page.evaluate(
-         "[...document.querySelectorAll('[data-theme-choice=\"dark\"]')]"
-         ".map(b => b.getAttribute('aria-pressed'))")
-     check("every copy shows Dark as selected",
-           lambda: (_ for _ in ()).throw(AssertionError(pressed))
-           if pressed != ["true", "true"] else None)
+           lambda: (_ for _ in ()).throw(AssertionError(theme_now))
+           if theme_now != "dark" else None)
+     check("the chosen option is marked selected",
+           lambda: expect(page.locator('#themeToggleProfile [data-theme-choice="dark"]')
+                          ).to_have_attribute("aria-pressed", "true"))
 
+     # The Transactions filters must be untouched by the removal.
      page.click('[data-tab="transactions"]')
      page.wait_for_timeout(400)
-     active = page.evaluate(
-         "document.querySelector('#themeToggle [data-theme-choice=\"dark\"]')"
-         ".classList.contains('active')")
-     check("the Transactions copy kept in step",
-           lambda: (_ for _ in ()).throw(AssertionError("out of sync")) if not active else None)
+     for control in ("#search", "#payments", "#preset", "#sort"):
+         check(f"Transactions kept its {control} filter",
+               lambda c=control: expect(page.locator(c)).to_be_visible())
 
-     # ...and back the other way.
-     page.click('#themeToggle [data-theme-choice="light"]')
-     page.wait_for_timeout(600)
      page.click('[data-tab="profile"]')
      page.wait_for_timeout(400)
-     back = page.evaluate(
-         "document.querySelector('#themeToggleProfile [data-theme-choice=\"light\"]')"
-         ".classList.contains('active')")
-     check("and the Profile copy follows Transactions",
-           lambda: (_ for _ in ()).throw(AssertionError("out of sync")) if not back else None)
+     page.click('#themeToggleProfile [data-theme-choice="light"]')
+     page.wait_for_timeout(600)
+     check("and switches back",
+           lambda: expect(page.locator('#themeToggleProfile [data-theme-choice="light"]')
+                          ).to_have_class(re.compile(r"\bactive\b")))
 
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
      check(f"no console/page errors ({len(real_errors)})",
