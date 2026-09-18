@@ -62,6 +62,36 @@ secret in the URL. Treat one-time `/?key=…` links as private.
 Profile), then Share → Add to Home Screen. Do **not** rely on `?key=` in the
 Home Screen URL — the saved key in localStorage is what loads your data.
 
+## Install it as an app (PWA)
+
+The dashboard is a progressive web app: installable, launches without browser
+chrome, and starts with no network.
+
+**iPhone:** open the site in Safari, then Share → **Add to Home Screen**.
+**Android / desktop Chrome:** use **Install app** in the address bar or menu.
+
+What makes that work, and what to keep working if you change the build:
+
+- `frontend/public/manifest.webmanifest` declares the name, colours, portrait
+  orientation, an "Add an expense" shortcut (it opens `/?tab=add`, which
+  `app.js` reads), and three icons: 192 and 512 `any`, plus a **separate**
+  maskable 512. The maskable one is its own image with the artwork inside an
+  80% safe zone — Android crops maskable icons to a circle or squircle, so
+  relabelling the plain icon gets its edges shaved off.
+- `frontend/public/sw.js` precaches the app shell and serves it cache-first,
+  so a launch with no network still renders. API requests are never cached:
+  they are cross-origin and carry your key.
+- **The precache list is generated at build time** by the `pwa-precache`
+  plugin in `frontend/vite.config.js`. Vite content-hashes the JS and CSS
+  filenames, so `sw.js` cannot name them itself — and before this existed, the
+  hand-written list missed exactly those two files. The app went offline,
+  loaded its cached HTML, failed to fetch its only script and stylesheet, and
+  rendered an unstyled skeleton. If you replace the build, keep that step: the
+  browser test in `tests/browser/` fails without it, clearing the HTTP cache
+  first so the precache is genuinely exercised rather than masked.
+- The cache name carries a build id derived from the emitted filenames, so a
+  deploy evicts the previous build instead of accumulating hashed files.
+
 ## Android app
 
 `frontend/` doubles as a native Android app via Capacitor — the same HTML/CSS/JS

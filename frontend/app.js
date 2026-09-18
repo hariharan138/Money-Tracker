@@ -96,6 +96,16 @@ if (keyFromUrl) {
   history.replaceState(null, '', clean || '/');
 }
 let KEY = keyFromUrl || readStoredApiKey();
+
+// The manifest's "Add an expense" shortcut opens /?tab=add. Read it here and
+// strip it, so a long-press launch lands on the right tab and a later reload
+// does not keep forcing it.
+const tabFromUrl = (params.get('tab') || '').trim().toLowerCase();
+if (tabFromUrl) {
+  params.delete('tab');
+  const rest = `${location.pathname}${params.toString() ? `?${params}` : ''}${location.hash}`;
+  history.replaceState(null, '', rest || '/');
+}
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
 /* —— Category icons ——
  * Drawn here rather than fetched: bundled means they render instantly, work
@@ -1681,6 +1691,7 @@ applyTheme(storedTheme() || systemTheme());
 render();
 syncProfileKeyUi();
 if (!KEY) showTab('profile');
+else if (tabFromUrl && NAV_TABS.includes(tabFromUrl)) showTab(tabFromUrl);
 load();
 
 // Auto-refresh so expenses added elsewhere (e.g. the Shortcut) show up

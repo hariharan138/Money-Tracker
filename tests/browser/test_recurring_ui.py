@@ -715,6 +715,80 @@ try:
            if light_disc == dark_disc or luminance(dark_disc) > 0.3 else None)
      icon_ctx.close()
 
+     print("\n19. Installable, and actually usable offline")
+     import json as _json
+     manifest = _json.loads((DIST / "manifest.webmanifest").read_text())
+     sizes = {i["sizes"] for i in manifest["icons"]}
+     check("the manifest ships the sizes Chrome wants to offer Install",
+           lambda: (_ for _ in ()).throw(AssertionError(str(sizes)))
+           if "192x192" not in sizes or "512x512" not in sizes else None)
+     check("a maskable icon exists, and is not the plain one relabelled",
+           lambda: (_ for _ in ()).throw(AssertionError(str(manifest["icons"])))
+           if not any(i.get("purpose") == "maskable" and "maskable" in i["src"]
+                      for i in manifest["icons"]) else None)
+     for field in ("id", "name", "short_name", "description", "start_url",
+                   "scope", "display", "background_color", "theme_color"):
+         check(f"manifest declares {field}",
+               lambda f=field: (_ for _ in ()).throw(AssertionError(f"missing {f}"))
+               if f not in manifest else None)
+     check("the splash colour matches the light page, not a colour from nowhere",
+           lambda: (_ for _ in ()).throw(AssertionError(manifest["background_color"]))
+           if manifest["background_color"] != "#f5f5f7" else None)
+
+     # The build step is what makes offline work; if it silently stopped
+     # running, the precache would go back to missing the hashed assets.
+     sw = (DIST / "sw.js").read_text()
+     built_assets = sorted(p.name for p in (DIST / "assets").glob("*") if p.suffix in (".js", ".css"))
+     check(f"the service worker precaches the real built assets ({len(built_assets)})",
+           lambda: (_ for _ in ()).throw(AssertionError("hashed assets missing from precache"))
+           if not built_assets or not all(a in sw for a in built_assets) else None)
+     check("and carries a build id, so a deploy evicts the old cache",
+           lambda: (_ for _ in ()).throw(AssertionError("placeholder left unreplaced"))
+           if "__BUILD_ID__" in sw or "__PRECACHE__" in sw else None)
+
+     # The real test: no network at all, and no HTTP cache to lean on.
+     off_ctx = browser.new_context(viewport={"width": 390, "height": 844},
+                                   service_workers="allow")
+     op = off_ctx.new_page()
+     op.goto(f"{WEB}/?key={KEY}", wait_until="networkidle")
+     op.wait_for_timeout(2500)   # let the worker install and claim
+     check("a service worker takes control",
+           lambda: (_ for _ in ()).throw(AssertionError("no controller"))
+           if not op.evaluate("!!navigator.serviceWorker.controller") else None)
+
+     # Clearing the HTTP cache is the point: without it the browser serves the
+     # assets from its own cache and the precache is never exercised.
+     off_ctx.new_cdp_session(op).send("Network.clearBrowserCache")
+     off_ctx.set_offline(True)
+     op.reload(wait_until="domcontentloaded")
+     op.wait_for_timeout(1500)
+
+     # Signals that can only come from the assets themselves. .bottom-nav is
+     # in the static HTML, so its presence proves nothing -- its computed
+     # position comes from the stylesheet, and the greeting is computed in JS
+     # (the markup ships "Good morning!" regardless of the hour).
+     nav_pos = op.evaluate("getComputedStyle(document.querySelector('.bottom-nav')).position")
+     check(f"the stylesheet loads offline (nav is {nav_pos})",
+           lambda: (_ for _ in ()).throw(AssertionError(nav_pos))
+           if nav_pos != "fixed" else None)
+     ran = op.evaluate("""
+       (() => { const el = document.querySelector('#recentPreview');
+                return !!el && el.children.length + el.textContent.trim().length > 0; })()
+     """)
+     check("the script runs offline (it rendered the list area)",
+           lambda: (_ for _ in ()).throw(AssertionError("app.js did not run"))
+           if not ran else None)
+     check("the theme still resolves offline",
+           lambda: (_ for _ in ()).throw(AssertionError("no theme"))
+           if op.evaluate("document.documentElement.dataset.theme") not in ("light", "dark")
+           else None)
+     # It cannot reach the API, and should say so rather than look broken.
+     status = op.evaluate("document.querySelector('#statusText').textContent")
+     check(f"and it says why it has no data ({status!r})",
+           lambda: (_ for _ in ()).throw(AssertionError("no status shown"))
+           if not status.strip() else None)
+     off_ctx.close()
+
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
      check(f"no console/page errors ({len(real_errors)})",
            lambda: (_ for _ in ()).throw(AssertionError(real_errors[0])) if real_errors else None)

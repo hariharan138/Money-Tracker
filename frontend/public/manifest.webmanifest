@@ -1,17 +1,43 @@
 {
-  "name": "Expenses",
+  "id": "/",
+  "name": "Expenses — Money Tracker",
   "short_name": "Expenses",
+  "description": "Log an expense in seconds, see where the month is going, and set a limit that tells you before you pass it.",
+  "lang": "en",
+  "dir": "ltr",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#fafafb",
-  "theme_color": "#fafafb",
+  "orientation": "portrait",
+  "categories": ["finance", "productivity", "utilities"],
+  "background_color": "#f5f5f7",
+  "theme_color": "#f5f5f7",
   "icons": [
     {
-      "src": "/icon-180.png",
-      "sizes": "180x180",
+      "src": "/icon-192.png",
+      "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add an expense",
+      "short_name": "Add",
+      "url": "/?tab=add",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
