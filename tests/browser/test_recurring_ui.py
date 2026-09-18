@@ -427,6 +427,47 @@ try:
            lambda: (_ for _ in ()).throw(AssertionError("no pre-paint script")) if not flash else None)
      fresh.close()
 
+     print("\n13. The Profile copy of the theme control")
+     page.click('[data-tab="profile"]')
+     page.wait_for_timeout(500)
+     check("Profile has an Appearance control",
+           lambda: expect(page.locator('#themeToggleProfile')).to_be_visible())
+     check("both copies exist", lambda: expect(page.locator('.theme-toggle')).to_have_count(2))
+
+     # Switch from Profile, and the Transactions copy must agree without a
+     # reload -- two controls disagreeing is worse than one control.
+     page.click('#themeToggleProfile [data-theme-choice="dark"]')
+     page.wait_for_timeout(600)
+     check("switching from Profile changes the theme",
+           lambda: (_ for _ in ()).throw(AssertionError(
+               page.evaluate("document.documentElement.dataset.theme")))
+           if page.evaluate("document.documentElement.dataset.theme") != "dark" else None)
+     pressed = page.evaluate(
+         "[...document.querySelectorAll('[data-theme-choice=\"dark\"]')]"
+         ".map(b => b.getAttribute('aria-pressed'))")
+     check("every copy shows Dark as selected",
+           lambda: (_ for _ in ()).throw(AssertionError(pressed))
+           if pressed != ["true", "true"] else None)
+
+     page.click('[data-tab="transactions"]')
+     page.wait_for_timeout(400)
+     active = page.evaluate(
+         "document.querySelector('#themeToggle [data-theme-choice=\"dark\"]')"
+         ".classList.contains('active')")
+     check("the Transactions copy kept in step",
+           lambda: (_ for _ in ()).throw(AssertionError("out of sync")) if not active else None)
+
+     # ...and back the other way.
+     page.click('#themeToggle [data-theme-choice="light"]')
+     page.wait_for_timeout(600)
+     page.click('[data-tab="profile"]')
+     page.wait_for_timeout(400)
+     back = page.evaluate(
+         "document.querySelector('#themeToggleProfile [data-theme-choice=\"light\"]')"
+         ".classList.contains('active')")
+     check("and the Profile copy follows Transactions",
+           lambda: (_ for _ in ()).throw(AssertionError("out of sync")) if not back else None)
+
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
      check(f"no console/page errors ({len(real_errors)})",
            lambda: (_ for _ in ()).throw(AssertionError(real_errors[0])) if real_errors else None)

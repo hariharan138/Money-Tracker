@@ -1468,10 +1468,14 @@ $('#limitInput').addEventListener('keydown', event => {
   }
 });
 
-$('#themeToggle').onclick = event => {
-  const button = event.target.closest('[data-theme-choice]');
-  if (button) applyTheme(button.dataset.themeChoice, { remember: true });
-};
+// There is a copy on Transactions and one on Profile; syncThemeUi() already
+// paints every [data-theme-choice] there is, so both stay in step on their own.
+$$('.theme-toggle').forEach(group => {
+  group.onclick = event => {
+    const button = event.target.closest('[data-theme-choice]');
+    if (button) applyTheme(button.dataset.themeChoice, { remember: true });
+  };
+});
 
 // Track the system only until the user picks a side, and never afterwards.
 window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
