@@ -1305,6 +1305,101 @@ $$('[data-tab]').forEach(button => {
   };
 });
 
+/* —— Pull to refresh ——
+ * Works on every tab, because "is my data current?" is a question you can ask
+ * from any of them. Touch only: a mouse has the Reload button, and hijacking a
+ * downward mouse drag would fight text selection.
+ *
+ * Only starts when the page is already at the top, so it can never swallow a
+ * scroll -- the mistake the nav's swipe handler made. */
+const PULL_TRIGGER_PX = 72;   // past this, releasing reloads
+const PULL_MAX_PX = 112;      // the disc stops following beyond this
+const PULL_START_PX = 8;      // slop, so a tap is not a pull
+const pullEl = $('#pullRefresh');
+let pullState = null;
+let refreshing = false;
+
+function movePullTo(distance, { settle = false } = {}) {
+  pullEl.classList.toggle('settling', settle);
+  if (distance <= 0) {
+    pullEl.style.transform = 'translate(-50%, -52px)';
+    pullEl.style.opacity = '0';
+    return;
+  }
+  // Resists as it goes, so the disc eases to a stop rather than tracking 1:1.
+  const eased = Math.min(distance, PULL_MAX_PX) * 0.62;
+  pullEl.style.transform = `translate(-50%, ${eased - 46}px) rotate(${distance * 2.4}deg)`;
+  pullEl.style.opacity = String(Math.min(1, distance / PULL_TRIGGER_PX));
+}
+
+function resetPull() {
+  pullState = null;
+  movePullTo(0, { settle: true });
+}
+
+async function runRefresh() {
+  refreshing = true;
+  pullEl.classList.add('spinning', 'settling');
+  pullEl.style.transform = 'translate(-50%, 16px)';
+  pullEl.style.opacity = '1';
+  try {
+    await load();
+  } finally {
+    refreshing = false;
+    pullEl.classList.remove('spinning');
+    movePullTo(0, { settle: true });
+  }
+}
+
+/** A pull can only begin at the very top, outside the nav, with no modal up. */
+function canStartPull(target) {
+  if (refreshing || window.scrollY > 0) return false;
+  if (target.closest('.bottom-nav')) return false;            // that is the tab swipe
+  if (target.closest('.modal:not([hidden])')) return false;   // modals scroll themselves
+  return true;
+}
+
+document.addEventListener('touchstart', event => {
+  if (event.touches.length !== 1 || !canStartPull(event.target)) {
+    pullState = null;
+    return;
+  }
+  const touch = event.touches[0];
+  pullState = { startX: touch.clientX, startY: touch.clientY, dy: 0, active: false };
+}, { passive: true });
+
+document.addEventListener('touchmove', event => {
+  if (!pullState || event.touches.length !== 1) return;
+  const touch = event.touches[0];
+  const dy = touch.clientY - pullState.startY;
+  const dx = touch.clientX - pullState.startX;
+
+  if (!pullState.active) {
+    // Up, sideways, or scrolled away from the top in the meantime: not a pull.
+    if (dy < PULL_START_PX || Math.abs(dx) > Math.abs(dy) || window.scrollY > 0) {
+      if (dy < 0 || Math.abs(dx) > Math.abs(dy)) pullState = null;
+      return;
+    }
+    pullState.active = true;
+  }
+
+  pullState.dy = dy;
+  // Stops the page scrolling under the gesture. Needs passive: false.
+  if (event.cancelable) event.preventDefault();
+  movePullTo(dy);
+}, { passive: false });
+
+function endPull() {
+  if (!pullState) return;
+  const { active, dy } = pullState;
+  pullState = null;
+  if (active && dy >= PULL_TRIGGER_PX) runRefresh();
+  else movePullTo(0, { settle: true });
+}
+
+document.addEventListener('touchend', endPull);
+document.addEventListener('touchcancel', endPull);
+
 /* —— Liquid-glass navbar: springy horizontal swipe / drag —— */
 const NAV_TABS = ['dashboard', 'transactions', 'add', 'analytics', 'profile'];
 const nav = $('.bottom-nav');

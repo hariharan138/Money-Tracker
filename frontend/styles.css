@@ -1619,3 +1619,42 @@ body.keyboard-open .bottom-nav { display: none; }
   font-weight: 700;
   opacity: 0.75;
 }
+
+
+/* —— Pull to refresh ——
+   The browser's own is disabled (overscroll-behavior: none on body, so the
+   page never rubber-bands), so this is the whole gesture: a disc that follows
+   your finger down from the top of any tab and spins while it reloads. */
+.pull-refresh {
+  position: fixed;
+  top: calc(10px + var(--safe-t));
+  left: 50%;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-nav);
+  opacity: 0;
+  pointer-events: none;
+  /* starts tucked above the top edge */
+  transform: translate(-50%, -52px);
+}
+
+/* While the finger is down the position is set inline, frame by frame, so
+   the transition has to be off or it lags behind the drag. */
+.pull-refresh.settling {
+  transition: transform .32s cubic-bezier(0.34, 1.56, 0.64, 1), opacity .25s ease;
+}
+
+.pull-refresh.spinning svg {
+  animation: spin .8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pull-refresh.settling { transition: opacity .2s ease; }
+  .pull-refresh.spinning svg { animation: none; }
+}

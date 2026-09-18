@@ -464,6 +464,106 @@ try:
            lambda: expect(page.locator('#themeToggleProfile [data-theme-choice="light"]')
                           ).to_have_class(re.compile(r"\bactive\b")))
 
+     print("\n14. Pull to refresh, on every tab")
+     # Needs a touch-capable context: the gesture is touch-only by design, so
+     # Playwright's mouse cannot reach it. Touches go in over CDP.
+     touch_ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True)
+     tp = touch_ctx.new_page()
+     tp.goto(f"{WEB}/?key={KEY}", wait_until="networkidle")
+     tp.wait_for_timeout(600)
+     cdp = touch_ctx.new_cdp_session(tp)
+
+     # Count refreshes the gesture actually started, by watching for the
+     # spinner only runRefresh() adds. Counting /api/expenses requests instead
+     # was wrong: the 15s background poll lands in the same window and reads
+     # as a refresh that never happened.
+     WATCH_REFRESH = """
+       window.__pullRefreshes = 0;
+       (() => {
+         const el = document.querySelector('#pullRefresh');
+         let was = false;
+         new MutationObserver(() => {
+           const now = el.classList.contains('spinning');
+           if (now && !was) window.__pullRefreshes++;
+           was = now;
+         }).observe(el, { attributes: true, attributeFilter: ['class'] });
+       })();
+     """
+     tp.evaluate(WATCH_REFRESH)
+
+     def touch_drag(dy, start=(195, 150), steps=12, release=True):
+         x, y = start
+         cdp.send("Input.dispatchTouchEvent",
+                  {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+         for i in range(1, steps + 1):
+             cdp.send("Input.dispatchTouchEvent",
+                      {"type": "touchMove",
+                       "touchPoints": [{"x": x, "y": y + dy * i / steps}]})
+             tp.wait_for_timeout(16)
+         if release:
+             cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+
+     def reloaded_by(action, settle=1400):
+         before = tp.evaluate("window.__pullRefreshes")
+         action()
+         tp.wait_for_timeout(settle)
+         return tp.evaluate("window.__pullRefreshes") > before
+
+     for tab in ("dashboard", "transactions", "add", "analytics", "profile"):
+         tp.click(f'[data-tab="{tab}"]')
+         tp.wait_for_timeout(500)
+         tp.evaluate("window.scrollTo(0, 0)")
+         got = reloaded_by(lambda: touch_drag(130))
+         check(f"pulling down on {tab} reloads",
+               lambda g=got, t=tab: (_ for _ in ()).throw(
+                   AssertionError(f"no reload on {t}")) if not g else None)
+
+     print("\n15. ...without swallowing anything else")
+     tp.click('[data-tab="dashboard"]')
+     tp.wait_for_timeout(500)
+     tp.evaluate("window.scrollTo(0, 0)")
+
+     # A short tug is not a pull.
+     short = reloaded_by(lambda: touch_drag(30))
+     check("a short pull does not reload",
+           lambda: (_ for _ in ()).throw(AssertionError("reloaded on a 30px tug"))
+           if short else None)
+
+     # The disc has to actually show up while dragging.
+     touch_drag(120, release=False)
+     opacity = tp.evaluate("getComputedStyle(document.querySelector('#pullRefresh')).opacity")
+     check(f"the spinner appears while pulling (opacity {opacity})",
+           lambda: (_ for _ in ()).throw(AssertionError(opacity)) if float(opacity) < 0.5 else None)
+     cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+     tp.wait_for_timeout(1200)
+
+     # Scrolled down, a downward drag is a scroll, not a refresh.
+     tp.click('[data-tab="transactions"]')
+     tp.wait_for_timeout(400)
+     for n in range(14):
+         tp.request.post(f"http://127.0.0.1:{API_PORT}/api/expenses",
+                         headers={"X-API-Key": KEY, "Content-Type": "application/json"},
+                         data={"amount": 5 + n, "category": f"Pull{n}", "payment_method": "UPI"})
+     tp.reload(wait_until="networkidle")
+     tp.evaluate(WATCH_REFRESH)  # the page was replaced; so was the observer
+     tp.click('[data-tab="transactions"]')
+     tp.wait_for_timeout(600)
+     tp.evaluate("window.scrollTo(0, 300)")
+     tp.wait_for_timeout(400)
+     mid = reloaded_by(lambda: touch_drag(130, start=(195, 400)))
+     check("pulling while scrolled down does not reload",
+           lambda: (_ for _ in ()).throw(AssertionError("refreshed mid-scroll")) if mid else None)
+
+     # A downward drag starting on the nav belongs to the tab swipe.
+     tp.evaluate("window.scrollTo(0, 0)")
+     tp.wait_for_timeout(400)
+     nav_box = tp.locator(".bottom-nav").bounding_box()
+     on_nav = reloaded_by(lambda: touch_drag(
+         120, start=(nav_box["x"] + nav_box["width"] / 2, nav_box["y"] + 20)))
+     check("a pull starting on the nav does not reload",
+           lambda: (_ for _ in ()).throw(AssertionError("nav drag refreshed")) if on_nav else None)
+     touch_ctx.close()
+
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
      check(f"no console/page errors ({len(real_errors)})",
            lambda: (_ for _ in ()).throw(AssertionError(real_errors[0])) if real_errors else None)
