@@ -1226,6 +1226,11 @@ body.keyboard-open .bottom-nav { display: none; }
 .budget-remaining {
   display: flex;
   align-items: center;
+  /* Wraps rather than squeezing. The Spent column used to be a fixed 132px,
+     which left the remaining amount about 90px -- and a rupee total has no
+     spaces to wrap on, so it overflowed its box and painted over the column
+     beside it. 22px of overlap at 390px, 92px at 320px. */
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 4px;
   padding: 14px;
@@ -1244,7 +1249,16 @@ body.keyboard-open .bottom-nav { display: none; }
   color: var(--ink);
 }
 
-.budget-remaining-text { flex: 1; min-width: 0; }
+/* A floor wide enough for a realistic total, so the two columns can no
+   longer both be squeezed onto one line at phone widths. */
+.budget-remaining-text {
+  flex: 1 1 auto;
+  min-width: 150px;
+}
+
+/* Last resort for an unusually large total: wrap inside the box rather than
+   spill out of it. Overlapping text is worse than a wrapped number. */
+.budget-remaining-text strong { overflow-wrap: anywhere; }
 
 .budget-remaining-text span {
   display: block;
@@ -1262,29 +1276,42 @@ body.keyboard-open .bottom-nav { display: none; }
 }
 
 .budget-remaining-spent {
-  flex-shrink: 0;
-  width: 132px;
+  /* Takes the rest of the row when it fits beside the amount, and the whole
+     of the next row when it does not. Laid out as a grid so that on its own
+     row it reads as a labelled figure -- "Spent" left, the total right, bar
+     across -- rather than a column of right-aligned fragments. */
+  flex: 1 1 132px;
+  min-width: 132px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 8px;
   text-align: right;
 }
 
 .budget-remaining-spent > span {
-  display: block;
+  grid-column: 1;
+  text-align: left;
   color: var(--muted);
   font-size: 11.5px;
   font-weight: 600;
 }
 
 .budget-remaining-spent strong {
-  display: block;
-  margin: 2px 0 6px;
+  grid-column: 2;
   font-size: 13px;
   font-weight: 750;
+  /* the one figure here that can get long */
+  overflow-wrap: anywhere;
 }
 
-.budget-remaining-spent .budget-track { margin-bottom: 4px; }
+.budget-remaining-spent .budget-track {
+  grid-column: 1 / -1;
+  margin: 6px 0 4px;
+}
 
 .budget-remaining-spent small {
-  display: block;
+  grid-column: 1 / -1;
   color: var(--muted);
   font-size: 10.5px;
   font-weight: 700;

@@ -789,6 +789,45 @@ try:
            if not status.strip() else None)
      off_ctx.close()
 
+     print("\n20. The limit card fits on a narrow phone")
+     # Measured, not eyeballed. The element's own rect is no use here: the box
+     # stays inside the layout while its text escapes, so the text is measured
+     # with a Range.
+     OVERLAP = """
+       (() => {
+         const amt = document.querySelector('#budgetRemaining');
+         const spent = document.querySelector('.budget-remaining-spent');
+         if (!amt || !spent) return null;
+         const r = document.createRange();
+         r.selectNodeContents(amt);
+         const a = r.getBoundingClientRect(), s = spent.getBoundingClientRect();
+         const sameRow = a.bottom > s.top + 4 && s.bottom > a.top + 4;
+         return { overlap: sameRow ? Math.round(a.right - s.left) : 0,
+                  overflows: amt.scrollWidth > amt.clientWidth + 1,
+                  text: amt.textContent.trim() };
+       })()
+     """
+     # A limit and a spend that leave a five-figure remainder -- the case that
+     # overflowed, since a rupee total has no spaces to wrap on.
+     seed = browser.new_context(viewport={"width": 390, "height": 844})
+     sp = seed.new_page()
+     sp.goto(f"{WEB}/?key={KEY}", wait_until="networkidle")
+     sp.request.put(f"http://127.0.0.1:{API_PORT}/api/limits",
+                    headers={"X-API-Key": KEY, "Content-Type": "application/json"},
+                    data={"monthly_limit": 400000})
+     seed.close()
+
+     for width in (320, 360, 390):
+         narrow = browser.new_context(viewport={"width": width, "height": 900})
+         np_ = narrow.new_page()
+         np_.goto(f"{WEB}/?key={KEY}", wait_until="networkidle")
+         np_.wait_for_timeout(1300)
+         m = np_.evaluate(OVERLAP)
+         check(f"at {width}px the remaining amount has room ({m['text'] if m else '?'})",
+               lambda m=m, w=width: (_ for _ in ()).throw(AssertionError(
+                   f"{w}px: {m}")) if m is None or m["overlap"] > 0 or m["overflows"] else None)
+         narrow.close()
+
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
      check(f"no console/page errors ({len(real_errors)})",
            lambda: (_ for _ in ()).throw(AssertionError(real_errors[0])) if real_errors else None)
