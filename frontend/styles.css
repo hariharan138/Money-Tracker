@@ -862,17 +862,10 @@ body.keyboard-open .bottom-nav { display: none; }
   box-shadow: var(--shadow);
 }
 
-.top-item > span {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--tint-4);
-  font-size: 18px;
-}
-
-.top-item div { flex: 1; min-width: 0; }
+/* The text block only. This used to be `.top-item div`, which also matched
+   the icon once it became a div -- flex: 1 gave the disc a zero basis and let
+   it grow, so it rendered 100px+ wide and a different width in every row. */
+.top-item > div:not(.icon) { flex: 1; min-width: 0; }
 .top-item strong, .top-item small { display: block; }
 .top-item strong { font-size: 13px; font-weight: 720; }
 .top-item small {

@@ -700,6 +700,19 @@ try:
      ip.wait_for_timeout(700)
      check("Top spending uses the same icons",
            lambda: expect(ip.locator(".top-item .icon svg").first).to_be_attached())
+     # Attached is not enough: `.top-item div` once matched the icon too and
+     # gave it flex: 1, so the disc stretched to 100px+ -- a different width in
+     # every row, since it grew into whatever the amount left over.
+     discs = ip.evaluate("""
+       [...document.querySelectorAll('.top-item .icon')].map(d => {
+         const r = d.getBoundingClientRect();
+         return [Math.round(r.width), Math.round(r.height)];
+       })
+     """)
+     bad = [d for d in discs if d[0] != d[1] or d[0] != 38]
+     check(f"and those discs are round and all one size ({len(discs)} rows)",
+           lambda: (_ for _ in ()).throw(AssertionError(f"stretched: {bad}"))
+           if not discs or bad else None)
 
      # Tokens carry the discs into dark mode with no extra palette.
      light_disc = ip.evaluate(
