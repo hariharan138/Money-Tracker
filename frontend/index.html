@@ -55,9 +55,13 @@
       <section class="hero" aria-label="Expense balance">
         <div class="hero-wave" aria-hidden="true"></div>
         <button class="more" type="button" aria-label="More options">•••</button>
-        <p class="card-label">TOTAL SPENT</p>
+        <p class="card-label" id="totalLabel">SPENT THIS MONTH</p>
         <strong id="total">₹0</strong>
         <p id="total-sub">0 transactions</p>
+        <div id="heroRange" class="hero-range" role="group" aria-label="Total spent range">
+          <button type="button" data-hero-range="month">This month</button>
+          <button type="button" data-hero-range="all">All</button>
+        </div>
         <div class="spend-meter" aria-hidden="true"><i></i><b></b><em></em></div>
         <div class="card-bottom">
           <span class="card-date">

@@ -841,6 +841,80 @@ try:
                    f"{w}px: {m}")) if m is None or m["overlap"] > 0 or m["overflows"] else None)
          narrow.close()
 
+     print("\n21. The home total is this month, with All one tap away")
+     import datetime as _dt
+     hero_ctx = browser.new_context(viewport={"width": 390, "height": 900})
+     hp = hero_ctx.new_page()
+     hp.goto(f"{WEB}/?key={KEY}", wait_until="networkidle")
+     # The case the whole feature turns on: something dated before this month.
+     now = _dt.datetime.now(_dt.timezone.utc)
+     earlier = (now.replace(day=1) - _dt.timedelta(days=5)).isoformat()
+     for amount, when in ((450, None), (1200, None), (9000, earlier)):
+         body = {"amount": amount, "category": "Food", "payment_method": "UPI"}
+         if when:
+             body["date"] = when
+         hp.request.post(f"http://127.0.0.1:{API_PORT}/api/expenses",
+                         headers={"X-API-Key": KEY, "Content-Type": "application/json"},
+                         data=body)
+     hp.reload(wait_until="networkidle")
+     hp.wait_for_timeout(1400)
+
+     def hero():
+         return hp.evaluate("""({
+           total: document.querySelector('#total').textContent,
+           sub: document.querySelector('#total-sub').textContent,
+           date: document.querySelector('#heroDate').textContent,
+           label: document.querySelector('#totalLabel').textContent,
+         })""")
+
+     def amount(text):
+         return float(re.sub(r"[^0-9.]", "", text) or 0)
+
+     def count(text):
+         return int(re.sub(r"[^0-9]", "", text.split()[0]) or 0)
+
+     # Earlier sections seeded this same database, so the figures are asserted
+     # as the difference the back-dated expense makes, not as absolutes.
+     month = hero()
+     check(f"it opens on this month ({month['total']}, {month['sub']})",
+           lambda: (_ for _ in ()).throw(AssertionError(str(month)))
+           if amount(month["total"]) <= 0 else None)
+     check("the label says which figure it is",
+           lambda: (_ for _ in ()).throw(AssertionError(month["label"]))
+           if month["label"] != "SPENT THIS MONTH" else None)
+     check("and the month is named",
+           lambda: (_ for _ in ()).throw(AssertionError(month["date"]))
+           if month["date"] == "All time" or not month["date"].strip() else None)
+     check("This month is the selected pill",
+           lambda: expect(hp.locator('[data-hero-range="month"]')).to_have_class(
+               re.compile(r"\bactive\b")))
+
+     hp.click('[data-hero-range="all"]')
+     hp.wait_for_timeout(500)
+     every = hero()
+     delta = round(amount(every["total"]) - amount(month["total"]), 2)
+     extra = count(every["sub"]) - count(month["sub"])
+     check(f"All adds exactly the back-dated expense (+{delta:.0f}, +{extra})",
+           lambda: (_ for _ in ()).throw(AssertionError(
+               f"{month} -> {every}")) if delta != 9000 or extra != 1 else None)
+     check("the label and date follow it",
+           lambda: (_ for _ in ()).throw(AssertionError(str(every)))
+           if every["label"] != "TOTAL SPENT" or every["date"] != "All time" else None)
+
+     hp.click('[data-hero-range="month"]')
+     hp.wait_for_timeout(500)
+     back = hero()
+     check("and it goes back to the month figure",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{month} -> {back}"))
+           if back != month else None)
+
+     # This month is a subset of everything, always.
+     check("the month total never exceeds the all-time total",
+           lambda: (_ for _ in ()).throw(AssertionError(f"{month} vs {every}"))
+           if amount(month["total"]) > amount(every["total"])
+           or count(month["sub"]) > count(every["sub"]) else None)
+     hero_ctx.close()
+
      real_errors = [e for e in errors if not any(i in e.lower() for i in ignore)]
      check(f"no console/page errors ({len(real_errors)})",
            lambda: (_ for _ in ()).throw(AssertionError(real_errors[0])) if real_errors else None)

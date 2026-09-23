@@ -159,7 +159,13 @@ let recurring = [];
 // Which credential the once-per-login side data (identity, limit, avatar,
 // recurring rules) was loaded for. Keeps that data off the 15s poll.
 let sideDataKey = null;
-const state = { preset: 'all', payment: 'all', q: '', sort: 'newest', chartRange: 'month' };
+const state = {
+  preset: 'all', payment: 'all', q: '', sort: 'newest', chartRange: 'month',
+  // The hero answers "how am I doing?", which is a question about the month
+  // you are in -- an all-time total only grows and never means much. "All" is
+  // one tap away for when you do want the lifetime figure.
+  heroRange: 'month',
+};
 
 function dateOf(value) {
   if (value instanceof Date) return value;
@@ -401,10 +407,20 @@ function spendInSpan(from, to) {
   }));
 }
 
+/** Expenses dated inside the current calendar month (local). */
+function monthExpenses() {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  return expenses.filter(item => {
+    const d = dateOf(item.date);
+    return !Number.isNaN(d.getTime()) && d >= from && d <= to;
+  });
+}
+
 /** Spend so far this calendar month (local). */
 function monthSpend() {
-  const now = new Date();
-  return spendInSpan(new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59));
+  return sum(monthExpenses());
 }
 
 /** Spend so far today (local). */
@@ -1019,10 +1035,27 @@ function render() {
   const today = sum(expenses.filter(item => dayKey(item.date) === todayKey()));
   const allTotal = sum(expenses);
 
+  // The hero shows this month by default, or everything when All is picked.
+  // Total and count come from the same list, so they can never disagree.
+  const heroAll = state.heroRange === 'all';
+  const heroItems = heroAll ? expenses : monthExpenses();
+  const heroTotal = heroAll ? allTotal : sum(heroItems);
+
   $('#greeting').textContent = greetingForNow();
-  $('#total').textContent = INR.format(allTotal);
-  $('#total-sub').textContent = `${expenses.length} transaction${expenses.length === 1 ? '' : 's'}`;
-  $('#heroDate').textContent = new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  // Say which figure this is. "TOTAL SPENT" above a month's worth reads as a
+  // lifetime total and makes the number look wrong.
+  $('#totalLabel').textContent = heroAll ? 'TOTAL SPENT' : 'SPENT THIS MONTH';
+  $('#total').textContent = INR.format(heroTotal);
+  $('#total-sub').textContent =
+    `${heroItems.length} transaction${heroItems.length === 1 ? '' : 's'}`;
+  $('#heroDate').textContent = heroAll
+    ? 'All time'
+    : new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  $$('[data-hero-range]').forEach(button => {
+    const on = button.dataset.heroRange === state.heroRange;
+    button.classList.toggle('active', on);
+    button.setAttribute('aria-pressed', String(on));
+  });
   $('#stats').innerHTML = `
     <div class="stat"><span class="stat-icon">↗</span><div><small>Today</small><strong>${INR.format(today)}</strong>${deltaLine(today, yesterdaySpend(), 'from yesterday')}</div></div>
     <div class="stat"><span class="stat-icon">↘</span><div><small>Selected</small><strong>${INR.format(total)}</strong>${deltaLine(monthSpend(), lastMonthSpend(), 'from last month')}</div></div>`;
@@ -1585,6 +1618,13 @@ nav.addEventListener('pointercancel', endNavDrag);
 $$('[data-go]').forEach(button => {
   button.onclick = () => showTab(button.dataset.go);
 });
+
+$('#heroRange').onclick = event => {
+  const button = event.target.closest('[data-hero-range]');
+  if (!button) return;
+  state.heroRange = button.dataset.heroRange;
+  render();
+};
 
 $('#analyticsRange').onclick = event => {
   const button = event.target.closest('[data-range]');
