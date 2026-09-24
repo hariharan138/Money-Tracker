@@ -137,6 +137,12 @@ class KeepAlive:
 
     def start(self) -> None:
         """Called from the app lifespan once Mongo is known to be up."""
+        if os.getenv("VERCEL"):
+            # Serverless: there's no 15-minute spin-down to fight, and a
+            # background task can't outlive the request that started it
+            # once the function suspends, so it would just leak a warning.
+            log.info("keep-alive off (running on Vercel; nothing to keep alive)")
+            return
         if not settings.keepalive_enabled:
             log.info("keep-alive off (set KEEPALIVE_ENABLED=true to self-ping)")
             return

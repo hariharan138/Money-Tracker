@@ -1,0 +1,13 @@
+# Keep the serverless function bundle small: only app/ and api/ are needed
+# to serve requests. Everything below is for local dev, the Render
+# deployment, or the separately-deployed frontend.
+frontend/
+tests/
+test_api.py
+main.py
+render.yaml
+KEEP_AWAKE_GUIDE.md
+image.png
+original-013caca786154faf013fb18e55e8ffcf.webp
+.venv/
+__pycache__/

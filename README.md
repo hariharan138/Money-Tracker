@@ -3,7 +3,11 @@
 FastAPI + MongoDB Atlas endpoint for logging expenses from an iPhone Shortcut.
 
 ```
-main.py                # run this: `python main.py`
+main.py                # local dev entrypoint: `python main.py` (uvicorn)
+api/
+└── index.py           # Vercel serverless entrypoint: `from app.main import app`
+vercel.json             # Vercel routing + function config (serverless deploy)
+.vercelignore            # excludes frontend/, tests/, Render-only files from the bundle
 app/
 ├── main.py            # app, lifespan, 400 handler, /health, /ping, icon routes
 ├── static/
@@ -11,7 +15,7 @@ app/
 │   └── *.png          # app icons (apple-touch-icon + favicon)
 ├── config.py          # env vars via pydantic-settings
 ├── database.py        # AsyncMongoClient lifespan + get_collection dependency
-├── keepalive.py       # background self-ping so Render's free tier stays awake
+├── keepalive.py       # background self-ping so Render's free tier stays awake (no-op on Vercel)
 ├── models/expense.py  # ExpenseIn / ExpenseCreated
 ├── models/recurring.py # recurring rules + the occurrence calendar maths
 ├── routes/auth.py     # accounts, login sessions, credential resolution
@@ -20,7 +24,7 @@ app/
 └── routes/view.py     # GET / -> HTML dashboard
 test_api.py            # smoke test, no DB required
 tests/browser/         # Chromium end-to-end test (needs a built frontend)
-render.yaml            # Render Blueprint: service, env vars, keep-alive
+render.yaml            # Render Blueprint: service, env vars, keep-alive (Render deploy only)
 frontend/              # standalone static dashboard, deploy independently
 ├── index.html
 ├── app.js
@@ -441,7 +445,50 @@ python3 tests/browser/test_recurring_ui.py
 ```
 
 The app pings Atlas on startup and refuses to boot on a bad URI — in Atlas,
-add your IP (and `0.0.0.0/0` for Render) under **Network Access**.
+add your IP (and `0.0.0.0/0` for Render or Vercel, since both use dynamic
+outbound IPs on their free/hobby tiers) under **Network Access**.
+
+## Deploy to Vercel (serverless)
+
+No process to keep awake, no keep-alive to configure — Vercel runs the API
+as an on-demand function instead of a long-lived server, so **Keeping the
+API awake** below doesn't apply here.
+
+```
+api/
+└── index.py    # `from app.main import app` — Vercel's Python runtime
+                 # auto-detects the `app` ASGI object in this file
+vercel.json      # rewrites every path to api/index.py; sets maxDuration
+.vercelignore    # keeps frontend/, tests/, Render-only files out of the bundle
+```
+
+1. Push this repo to GitHub (`.env` is gitignored — keep it that way).
+2. [vercel.com](https://vercel.com) → **Add New → Project** → import the repo.
+   Vercel detects the Python function under `api/` automatically; no build
+   command is needed.
+3. **Settings → Environment Variables**: add `MONGODB_URI`, `SHORTCUT_API_KEY`
+   (and optionally `MONGODB_DB`, `MONGODB_COLLECTION`, `CORS_ORIGINS`). Leave
+   `KEEPALIVE_ENABLED` unset — it's ignored on Vercel regardless (see below).
+4. Deploy, then point the Shortcut at `https://YOUR-APP.vercel.app/api/expenses`.
+
+Or from the CLI: `npm i -g vercel`, then `vercel` (preview) or `vercel --prod`
+from the repo root; `vercel env add MONGODB_URI` etc. for the secrets.
+
+Notes specific to serverless:
+
+- **Cold starts** replace Render's 30–60s sleep-wake with a much shorter
+  per-instance cold start (new Mongo connection); Vercel keeps recently-used
+  instances warm between requests, so most calls hit an already-connected
+  instance. `app/database.py`'s single module-level client is what makes that
+  reuse work — don't replace it with a per-request connection.
+- `app/keepalive.py` detects the `VERCEL` environment variable (which Vercel
+  sets automatically) and refuses to start its background self-ping loop,
+  since there's no spin-down to fight and a function can't run a task after
+  it suspends. The `/ping` and `/warmup` routes still work if you call them
+  directly, they just don't need to be.
+- `vercel.json` sets `maxDuration: 30` for headroom on a cold start against
+  Atlas's free tier; raise or lower it in that file to match your plan's
+  limit (Hobby allows up to 60s, Pro up to 300s).
 
 ## Deploy to Render
 
