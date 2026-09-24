@@ -7,7 +7,8 @@ main.py                # local dev entrypoint: `python main.py` (uvicorn)
 api/
 └── index.py           # Vercel serverless entrypoint: `from app.main import app`
 vercel.json             # Vercel routing + function config (serverless deploy)
-.vercelignore            # excludes frontend/, tests/, Render-only files from the bundle
+.vercelignore            # excludes tests/, Render-only files from the deploy (NOT frontend/ -
+                          # it's shared across every Vercel project on this repo, see below)
 app/
 ├── main.py            # app, lifespan, 400 handler, /health, /ping, icon routes
 ├── static/
@@ -459,29 +460,40 @@ api/
 └── index.py    # `from app.main import app` — Vercel's Python runtime
                  # auto-detects the `app` ASGI object in this file
 vercel.json      # rewrites every path to api/index.py; sets maxDuration
-                 # and pins framework/build/install commands to null so a
-                 # project misconfigured for the frontend's Vite build
-                 # doesn't try to run `vite build` at the repo root
-.vercelignore    # keeps frontend/, tests/, Render-only files out of the bundle
+.vercelignore    # keeps tests/, Render-only files out of the deploy
 ```
 
+The backend and the `frontend/` dashboard are **two separate Vercel
+projects on the same GitHub repo** — one Vercel project has exactly one
+Root Directory and one build, so they can't share a project. If you
+already deployed the frontend as a Vercel project, don't reuse it for
+the backend; create a second, new one:
+
 1. Push this repo to GitHub (`.env` is gitignored — keep it that way).
-2. [vercel.com](https://vercel.com) → **Add New → Project** → import the repo.
-   Vercel detects the Python function under `api/` automatically; no build
-   command is needed. If the project already existed with **Settings →
-   Build and Development Settings → Framework Preset** set to something
-   like Vite (e.g. reused from an earlier import), `vercel.json`'s
-   `"framework": null` now overrides that — but if you still see a
-   `vite build` step in the logs, set the Framework Preset to **Other**
-   there directly and make sure **Root Directory** is the repo root, not
-   `frontend/`.
-3. **Settings → Environment Variables**: add `MONGODB_URI`, `SHORTCUT_API_KEY`
-   (and optionally `MONGODB_DB`, `MONGODB_COLLECTION`, `CORS_ORIGINS`). Leave
-   `KEEPALIVE_ENABLED` unset — it's ignored on Vercel regardless (see below).
-4. Deploy, then point the Shortcut at `https://YOUR-APP.vercel.app/api/expenses`.
+2. [vercel.com](https://vercel.com) → **Add New → Project** → import the repo
+   **again** (Vercel allows importing the same repo into multiple
+   projects) → give it a distinct name, e.g. `money-tracker-api`.
+3. **Root Directory**: leave it as the repo root (blank) — do **not** set it
+   to `frontend/`. **Framework Preset**: **Other**. Vercel detects the
+   Python function under `api/` automatically; no build command is needed.
+4. **Settings → Environment Variables**: add `MONGODB_URI`, `SHORTCUT_API_KEY`
+   (and optionally `MONGODB_DB`, `MONGODB_COLLECTION`, `CORS_ORIGINS` set to
+   the frontend project's origin). Leave `KEEPALIVE_ENABLED` unset — it's
+   ignored on Vercel regardless (see below).
+5. Deploy, then point the Shortcut at
+   `https://money-tracker-api.vercel.app/api/expenses` (use your project's
+   actual domain, shown at the top of its Vercel dashboard page).
 
 Or from the CLI: `npm i -g vercel`, then `vercel` (preview) or `vercel --prod`
 from the repo root; `vercel env add MONGODB_URI` etc. for the secrets.
+
+**`.vercelignore` gotcha:** it's read at the initial repo clone, *before*
+either project's Root Directory is applied — so it is shared across both
+Vercel projects on this repo, not scoped to just one. Never add `frontend/`
+to it: that would strip `frontend/package.json` out of the frontend
+project's own build too (whose Root Directory *is* `frontend/`), breaking
+its `npm install` with a confusing `vite: command not found` error that has
+nothing to do with Vite itself.
 
 Notes specific to serverless:
 
