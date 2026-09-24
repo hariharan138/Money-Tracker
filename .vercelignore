@@ -4,7 +4,7 @@
 frontend/
 tests/
 test_api.py
-main.py
+/main.py
 render.yaml
 KEEP_AWAKE_GUIDE.md
 image.png

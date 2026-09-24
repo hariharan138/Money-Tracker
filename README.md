@@ -459,13 +459,22 @@ api/
 └── index.py    # `from app.main import app` — Vercel's Python runtime
                  # auto-detects the `app` ASGI object in this file
 vercel.json      # rewrites every path to api/index.py; sets maxDuration
+                 # and pins framework/build/install commands to null so a
+                 # project misconfigured for the frontend's Vite build
+                 # doesn't try to run `vite build` at the repo root
 .vercelignore    # keeps frontend/, tests/, Render-only files out of the bundle
 ```
 
 1. Push this repo to GitHub (`.env` is gitignored — keep it that way).
 2. [vercel.com](https://vercel.com) → **Add New → Project** → import the repo.
    Vercel detects the Python function under `api/` automatically; no build
-   command is needed.
+   command is needed. If the project already existed with **Settings →
+   Build and Development Settings → Framework Preset** set to something
+   like Vite (e.g. reused from an earlier import), `vercel.json`'s
+   `"framework": null` now overrides that — but if you still see a
+   `vite build` step in the logs, set the Framework Preset to **Other**
+   there directly and make sure **Root Directory** is the repo root, not
+   `frontend/`.
 3. **Settings → Environment Variables**: add `MONGODB_URI`, `SHORTCUT_API_KEY`
    (and optionally `MONGODB_DB`, `MONGODB_COLLECTION`, `CORS_ORIGINS`). Leave
    `KEEPALIVE_ENABLED` unset — it's ignored on Vercel regardless (see below).
