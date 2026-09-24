@@ -1,7 +1,12 @@
-# Keep the serverless function bundle small: only app/ and api/ are needed
-# to serve requests. Everything below is for local dev, the Render
-# deployment, or the separately-deployed frontend.
-frontend/
+# NOTE: .vercelignore applies at the initial repo clone, BEFORE each
+# Vercel project's own Root Directory is applied — so it is shared across
+# every project built from this repo, not just the backend. Do not list
+# `frontend/` here: that would also strip it from the frontend Vercel
+# project's own build (whose Root Directory *is* frontend/), deleting its
+# package.json before `npm install` ever runs.
+#
+# Everything below is for local dev or the Render deployment only, and
+# isn't needed by either Vercel project.
 tests/
 test_api.py
 /main.py
