@@ -1132,7 +1132,7 @@ function updateAddPreview() {
 
 async function load({ quiet = false } = {}) {
   if (!hasApiConfiguration()) {
-    setStatus('Set PRIMARY_API_URL and SECONDARY_API_URL in frontend/.env.local', 'err');
+    setStatus('Set PRIMARY_API_URL in frontend/.env.local', 'err');
     syncProfileKeyUi('Backend URLs are not configured', 'err');
     return false;
   }

@@ -47,8 +47,8 @@ function pwaPrecache() {
 }
 
 export default defineConfig({
-  // These are public backend origins, not credentials. Vite only exposes
+  // This is a public backend origin, not a credential. Vite only exposes
   // variables with approved prefixes to browser code.
-  envPrefix: ['VITE_', 'PRIMARY_API_URL', 'SECONDARY_API_URL'],
+  envPrefix: ['VITE_', 'PRIMARY_API_URL'],
   plugins: [pwaPrecache()],
 });

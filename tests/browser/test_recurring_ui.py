@@ -4,8 +4,7 @@ Not part of the pytest suite: it needs Chromium and a built frontend, and it
 covers the things TestClient structurally cannot -- a CORS preflight, and a
 real mouse pointer (which is how the nav's pointer-capture bug survived).
 
-    cd frontend && PRIMARY_API_URL=http://127.0.0.1:8124 \
-        SECONDARY_API_URL=http://127.0.0.1:8124 npm run build
+    cd frontend && PRIMARY_API_URL=http://127.0.0.1:8124 npm run build
     python3 tests/browser/test_recurring_ui.py
 
 It starts and stops its own servers, so each run gets an empty database.
