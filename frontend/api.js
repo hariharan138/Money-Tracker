@@ -1,16 +1,13 @@
-const PRIMARY_API_URL = import.meta.env.PRIMARY_API_URL || '';
-const SECONDARY_API_URL = import.meta.env.SECONDARY_API_URL || '';
-// Fail over quickly so a cold primary does not stall the UI.
-const PRIMARY_TIMEOUT_MS = 3_000;
-// Safe to send twice. POST is not, so it never leaves the primary.
-const RETRYABLE = new Set(['GET', 'HEAD', 'PUT', 'DELETE']);
+const API_URL = import.meta.env.PRIMARY_API_URL || '';
+// Vercel serverless cold starts (function init + a fresh MongoDB Atlas
+// connection) can take several seconds -- long enough that a short timeout
+// here would abort a request that was merely slow, not actually stuck.
+// Bounding every request (not just GETs) means a genuinely dead network
+// still fails the promise instead of leaving the UI on a spinner forever.
+const REQUEST_TIMEOUT_MS = 10_000;
 
-function apiUrl(baseUrl, path) {
-  return new URL(path, `${baseUrl.replace(/\/$/, '')}/`).toString();
-}
-
-function devLog(message) {
-  if (import.meta.env.DEV) console.info(message);
+function apiUrl(path) {
+  return new URL(path, `${API_URL.replace(/\/$/, '')}/`).toString();
 }
 
 /**
@@ -34,13 +31,18 @@ function buildFetchInit(init = {}, signal) {
   return next;
 }
 
-async function fetchPrimaryWithTimeout(url, init) {
+/**
+ * Make an API request with a hard timeout, so a stalled connection fails
+ * the promise instead of hanging until the caller gives up.
+ */
+export async function apiFetch(path, init = {}) {
+  if (!API_URL) {
+    throw new Error('PRIMARY_API_URL must be configured');
+  }
+
+  const url = apiUrl(path);
   const controller = new AbortController();
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, PRIMARY_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   const callerSignal = init.signal;
   const abortFromCaller = () => controller.abort(callerSignal?.reason);
@@ -50,51 +52,13 @@ async function fetchPrimaryWithTimeout(url, init) {
   }
 
   try {
-    return {
-      response: await fetch(url, buildFetchInit(init, controller.signal)),
-    };
-  } catch (error) {
-    if (callerSignal?.aborted && !timedOut) throw error;
-    return { error };
+    return await fetch(url, buildFetchInit(init, controller.signal));
   } finally {
     clearTimeout(timeout);
     callerSignal?.removeEventListener('abort', abortFromCaller);
   }
 }
 
-/**
- * Make an API request with per-request primary/secondary failover.
- *
- * Only network failures, primary timeouts, and primary 5xx responses use the
- * secondary. Authentication and normal client errors are returned unchanged.
- *
- * POST is never retried: both backends write to the same database, so a
- * primary that answered slowly (Render cold starts routinely beat the 3s
- * timeout) would have its insert repeated and the expense logged twice.
- */
-export async function apiFetch(path, init = {}) {
-  if (!PRIMARY_API_URL || !SECONDARY_API_URL) {
-    throw new Error('PRIMARY_API_URL and SECONDARY_API_URL must both be configured');
-  }
-
-  const primaryUrl = apiUrl(PRIMARY_API_URL, path);
-  const secondaryUrl = apiUrl(SECONDARY_API_URL, path);
-
-  if (!RETRYABLE.has((init.method || 'GET').toUpperCase())) {
-    return fetch(primaryUrl, buildFetchInit(init));
-  }
-
-  const primary = await fetchPrimaryWithTimeout(primaryUrl, init);
-
-  if (primary.response && primary.response.status < 500) return primary.response;
-
-  devLog('Primary API failed, switching to secondary');
-  // Fresh options object so a string/Blob body can be sent again safely.
-  const secondaryResponse = await fetch(secondaryUrl, buildFetchInit(init));
-  if (secondaryResponse.ok) devLog('Secondary API request successful');
-  return secondaryResponse;
-}
-
 export function hasApiConfiguration() {
-  return Boolean(PRIMARY_API_URL && SECONDARY_API_URL);
+  return Boolean(API_URL);
 }

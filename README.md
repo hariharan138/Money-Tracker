@@ -46,10 +46,10 @@ or any static host. It does not need a backend process.
 
 1. Deploy the FastAPI API as normal, for example at `https://expenses-api.example.com`.
 2. Copy `frontend/.env.example` to `frontend/.env.local` and set
-   `PRIMARY_API_URL` and `SECONDARY_API_URL`. In your frontend host, set the
-   same build environment variables instead. These are public API origins; do
-   not put API keys or other credentials in frontend environment variables.
-3. Set `CORS_ORIGINS` on **both** API deployments to your frontend origin, e.g.
+   `PRIMARY_API_URL`. In your frontend host, set the same build environment
+   variable instead. This is a public API origin; do not put API keys or
+   other credentials in frontend environment variables.
+3. Set `CORS_ORIGINS` on the API deployment to your frontend origin, e.g.
    `https://expenses.example.com`. Use commas for multiple origins.
 4. Run `cd frontend && npm install && npm run build`, then deploy `frontend/dist`.
 5. Open the frontend at `https://expenses.example.com` (no key in the URL),
@@ -440,8 +440,7 @@ every tab click away from its own button (invisible on touch). It starts its
 own servers, so each run gets an empty database:
 
 ```bash
-cd frontend && PRIMARY_API_URL=http://127.0.0.1:8124 \
-    SECONDARY_API_URL=http://127.0.0.1:8124 npm run build && cd ..
+cd frontend && PRIMARY_API_URL=http://127.0.0.1:8124 npm run build && cd ..
 python3 tests/browser/test_recurring_ui.py
 ```
 
