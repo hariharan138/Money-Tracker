@@ -15,6 +15,7 @@ from .keepalive import keepalive
 from .routes.auth import router as auth_router
 from .routes.expenses import router
 from .routes.limits import router as limits_router
+from .routes.notes import router as notes_router
 from .routes.profiles import router as profiles_router
 from .routes.recurring import router as recurring_router
 from .routes.view import router as view_router
@@ -70,6 +71,7 @@ if _cors_origins:
 app.include_router(auth_router)
 app.include_router(router)
 app.include_router(limits_router)
+app.include_router(notes_router)
 app.include_router(profiles_router)
 app.include_router(recurring_router)
 app.include_router(view_router)

@@ -57,6 +57,8 @@ async def _ensure_indexes(db) -> None:
         # Recurring rules are listed per user, and filtered to the active ones
         # on the catch-up path.
         await db["recurring"].create_index([("user", 1), ("active", 1)])
+        # The Notes page lists newest-first, same shape as the expense query.
+        await db["notes"].create_index([("user", 1), ("updated_at", -1)])
         # The idempotency guarantee for materialisation: one expense per rule
         # per occurrence date, enforced by the database rather than by a
         # read-then-write that two concurrent polls could both pass. Sparse,
@@ -102,3 +104,9 @@ def get_sessions_collection() -> AsyncCollection:
     """FastAPI dependency for login sessions (TTL-expired by Mongo)."""
     assert _client is not None, "lifespan did not run"
     return _client[settings.mongodb_db]["sessions"]
+
+
+def get_notes_collection() -> AsyncCollection:
+    """FastAPI dependency for the Notes page (text + inline image data URLs)."""
+    assert _client is not None, "lifespan did not run"
+    return _client[settings.mongodb_db]["notes"]
