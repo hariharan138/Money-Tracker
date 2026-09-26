@@ -152,10 +152,24 @@ sms-tracker-android/
 │   ├── sms/SmsReader.kt         # reads android.provider.Telephony.Sms via ContentResolver
 │   ├── sms/TransactionParser.kt # regex heuristics: amount, debit/credit, merchant, bank
 │   ├── data/                    # Room entity/DAO/database for the imported ledger
+│   ├── ui/theme/                # AppColors/AppTypography ported 1:1 from frontend/styles.css
+│   ├── ui/components/           # AppCardSurface, TransactionRow, PrimaryButton, FloatingBottomNav, ...
 │   ├── ui/ScanScreen.kt         # permission prompt, "Scan inbox", review + select candidates
 │   ├── ui/TransactionsScreen.kt # the local ledger: list, totals, delete
 │   └── MainActivity.kt          # two-tab Compose shell (Scan SMS / Transactions)
 ```
+
+**Design matches the web dashboard, not stock Material.** `ui/theme/Color.kt` and
+`ui/theme/Type.kt` mirror `frontend/styles.css`'s `:root` tokens exactly (paper/
+card/ink/accent colors, light+dark palettes, the same green-is-income /
+amber-is-spend convention) and load the same **Plus Jakarta Sans** variable
+font at the same weights (720/760/800, negative letter-spacing on headings).
+`ui/components/AppComponents.kt` reimplements the CSS patterns as Compose:
+18dp rounded shadowed cards (`.tx`/`.empty`), 44dp tinted circular category
+discs (`.icon.tone-*`), the charcoal primary button (`.save-expense`), and the
+floating pill bottom nav (`.bottom-nav`) instead of a stock Material
+`NavigationBar`. The launcher icon reuses `frontend/public/icon-maskable-512.png`
+so both apps show the same icon on a home screen.
 
 How it works:
 

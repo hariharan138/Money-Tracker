@@ -7,16 +7,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,6 +28,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.moneytracker.smsimport.ui.ScanScreen
 import com.moneytracker.smsimport.ui.ScanViewModel
 import com.moneytracker.smsimport.ui.TransactionsScreen
+import com.moneytracker.smsimport.ui.components.FloatingBottomNav
+import com.moneytracker.smsimport.ui.components.NavEntry
+import com.moneytracker.smsimport.ui.theme.LocalAppColors
 import com.moneytracker.smsimport.ui.theme.SmsTrackerTheme
 
 class MainActivity : ComponentActivity() {
@@ -50,6 +50,7 @@ private fun AppRoot() {
     var selectedTab by remember { mutableIntStateOf(0) }
     var hasPermission by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val colors = LocalAppColors.current
 
     LaunchedEffect(Unit) {
         hasPermission = ContextCompat.checkSelfPermission(
@@ -62,24 +63,21 @@ private fun AppRoot() {
     ) { granted -> hasPermission = granted }
 
     Scaffold(
+        containerColor = colors.paper,
         bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                    label = { Text("Scan SMS") }
+            FloatingBottomNav(
+                items = listOf(
+                    NavEntry("Scan SMS", Icons.Filled.Search, selectedTab == 0) { selectedTab = 0 },
+                    NavEntry("Transactions", Icons.AutoMirrored.Filled.List, selectedTab == 1) { selectedTab = 1 }
                 )
-                NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
-                    label = { Text("Transactions") }
-                )
-            }
+            )
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding)) {
+        Box(
+            modifier = Modifier
+                .background(colors.paper)
+                .padding(padding)
+        ) {
             when (selectedTab) {
                 0 -> ScanScreen(
                     viewModel = viewModel,
