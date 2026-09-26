@@ -36,6 +36,8 @@ frontend/              # standalone static dashboard, deploy independently
 ├── capacitor.config.json # Android shell config
 ├── resources/icon.png   # source image for launcher icons
 └── android/             # generated Capacitor project (see "Android app")
+sms-tracker-android/    # separate native Android app: local-only SMS transaction
+                          # import (see "SMS import app (local-only, native)")
 ```
 
 ## Deploy the frontend separately
@@ -132,6 +134,62 @@ with `npx capacitor-assets generate --android`.
 For the Play Store, create your own keystore
 (`keytool -genkey -v -keystore expenses.keystore -alias expenses -keyalg RSA -validity 10000`),
 add a `signingConfigs` block to `android/app/build.gradle`, then `./gradlew bundleRelease`.
+
+## SMS import app (local-only, native)
+
+`sms-tracker-android/` is a **separate, standalone native Android app** (Kotlin +
+Jetpack Compose + Room) — not the Capacitor app above. Its job: read the
+device's SMS inbox, pull out bank/UPI/card transaction alerts, and let you
+review and import them into the app's own on-device database. There is no
+network code in this app at all: nothing is uploaded, no backend, no API key.
+Everything lives in a local Room/SQLite database (`sms_transactions.db`) and
+`android:allowBackup="false"` so it never leaves the device via cloud backup
+either.
+
+```
+sms-tracker-android/
+├── app/src/main/java/com/moneytracker/smsimport/
+│   ├── sms/SmsReader.kt         # reads android.provider.Telephony.Sms via ContentResolver
+│   ├── sms/TransactionParser.kt # regex heuristics: amount, debit/credit, merchant, bank
+│   ├── data/                    # Room entity/DAO/database for the imported ledger
+│   ├── ui/ScanScreen.kt         # permission prompt, "Scan inbox", review + select candidates
+│   ├── ui/TransactionsScreen.kt # the local ledger: list, totals, delete
+│   └── MainActivity.kt          # two-tab Compose shell (Scan SMS / Transactions)
+```
+
+How it works:
+
+1. **Grant permission.** The app requests `READ_SMS` only — no `RECEIVE_SMS`,
+   no contacts, no location. This is the one permission it needs and the one
+   thing Play Store's SMS-permission policy will ask you to justify (core
+   function = SMS-based transaction import, which qualifies).
+2. **Scan inbox.** Reads every SMS via `Telephony.Sms.CONTENT_URI` and runs
+   each one through `TransactionParser`, which looks for a currency amount
+   (`Rs.`, `INR`, `₹`) plus a debit/credit keyword (debited, spent, credited,
+   received, ...). Everything else is dropped. This is a heuristic, not a
+   database of every bank's SMS format — extend the keyword/regex lists in
+   `TransactionParser.kt` for formats it misses.
+3. **Review candidates.** Matches are shown with amount, type, merchant guess,
+   detected bank, and a checkbox. Anything already imported is marked and
+   pre-unchecked so re-scanning never double-imports (dedup key: sender + SMS
+   timestamp + body).
+4. **Import.** Selected candidates are written to the local `transactions`
+   table. The Transactions tab shows the running ledger and total spent, with
+   delete per row.
+
+Build it (needs Android Studio / SDK; JDK 17+):
+
+```bash
+cd sms-tracker-android
+./gradlew assembleDebug   # -> app/build/outputs/apk/debug/app-debug.apk
+```
+
+Install with `adb install -r app-debug.apk`, or copy the APK to the phone and
+tap it.
+
+This app and the Capacitor app in `frontend/android/` are independent — they
+don't share code, storage, or a build. There is currently no bridge between
+the two; the SMS import ledger stays local unless you wire one up.
 
 ## API
 
