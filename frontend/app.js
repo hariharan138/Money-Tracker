@@ -123,7 +123,7 @@ const ICON_SET = {
   groceries: ['green', '<path d="M3 4h2l2.2 10.4a1.6 1.6 0 0 0 1.6 1.3h7.7a1.6 1.6 0 0 0 1.6-1.2L20 8H6"/><circle cx="9.5" cy="19" r="1.3"/><circle cx="17" cy="19" r="1.3"/>'],
   travel: ['ink', '<path d="M12 3c.85 0 1.5 1.1 1.5 2.4v2.9l6.6 3.8v2l-6.6-2v3.6l2.2 1.6v1.5L12 17.7l-3.7 1.1v-1.5l2.2-1.6v-3.6l-6.6 2v-2l6.6-3.8V5.4C10.5 4.1 11.15 3 12 3z"/>'],
   cab: ['ink', '<path d="M5 16.5h14M6.5 16.5V19a.8.8 0 0 1-.8.8H5a.8.8 0 0 1-.8-.8v-2.5M19.8 16.5V19a.8.8 0 0 1-.8.8h-.7a.8.8 0 0 1-.8-.8v-2.5"/><path d="M4.2 16.5v-4l1.9-4.3a1.4 1.4 0 0 1 1.3-.8h9.2a1.4 1.4 0 0 1 1.3.8l1.9 4.3v4z"/><path d="M6.6 12.4h10.8"/>'],
-  fuel: ['ink', '<path d="M5 20.5h9V6a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 5 6z"/><path d="M5 11.5h9"/><path d="M14 9h2.8a1.2 1.2 0 0 1 1.2 1.2v6.1a1.6 1.6 0 0 0 3.2 0V11l-2-2.4"/>'],
+  fuel: ['blue', '<path d="M5 20.5h9V6a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 5 6z"/><path d="M5 11.5h9"/><path d="M14 9h2.8a1.2 1.2 0 0 1 1.2 1.2v6.1a1.6 1.6 0 0 0 3.2 0V11l-2-2.4"/>'],
   bills: ['ink', '<path d="M6 3.5h12v17l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4-2 1.4z"/><path d="M9 8h6M9 12h6"/>'],
   rent: ['ink', '<path d="M3.8 10.3 12 4l8.2 6.3V20a1 1 0 0 1-1 1H4.8a1 1 0 0 1-1-1z"/><path d="M9.6 21v-6.2h4.8V21"/>'],
   health: ['green', '<path d="M12 20.3s-7.4-4.5-7.4-9.6A4.4 4.4 0 0 1 12 7.7a4.4 4.4 0 0 1 7.4 3c0 5.1-7.4 9.6-7.4 9.6z"/><path d="M12 11v4M10 13h4"/>'],
@@ -136,10 +136,10 @@ const ICON_SET = {
   expense: ['ink', '<path d="M3.5 8.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2"/><rect x="3.5" y="8.5" width="17" height="10.5" rx="2"/><path d="M15.4 13.75h2.6"/>'],
   income: ['green', '<path d="M4 15.5l6-6 4 4 6-8"/><path d="M14.5 5.5h5.5v5.5"/>'],
 };
-const ICON_FALLBACK = ['ink', '<path d="M4 11.3V5.4a1.4 1.4 0 0 1 1.4-1.4h5.9a1.4 1.4 0 0 1 1 .4l6.3 6.3a1.4 1.4 0 0 1 0 2l-5.9 5.9a1.4 1.4 0 0 1-2 0L4.4 12.3a1.4 1.4 0 0 1-.4-1z"/><circle cx="8.3" cy="8.3" r="1.2"/>'];
+const ICON_FALLBACK = ['purple', '<path d="M4 11.3V5.4a1.4 1.4 0 0 1 1.4-1.4h5.9a1.4 1.4 0 0 1 1 .4l6.3 6.3a1.4 1.4 0 0 1 0 2l-5.9 5.9a1.4 1.4 0 0 1-2 0L4.4 12.3a1.4 1.4 0 0 1-.4-1z"/><circle cx="8.3" cy="8.3" r="1.2"/>'];
 
 /** Grocery is a common spelling of the same thing. */
-const ICON_ALIAS = { grocery: 'groceries', groceries: 'groceries' };
+const ICON_ALIAS = { grocery: 'groceries', groceries: 'groceries', petrol: 'fuel', gas: 'fuel' };
 
 function categoryIcon(category) {
   const name = (category || '').trim().toLowerCase();
@@ -262,6 +262,12 @@ function formatDayLabel(key) {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** "28 Sep 2026" -- the absolute date, shown alongside the relative label. */
+function formatFullDate(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 function groupByDate(items) {
   const groups = new Map();
   for (const item of items) {
@@ -290,7 +296,9 @@ function row(item, compact = false) {
       <div class="meta">${escapeHtml(time)}${item.payment_method ? ` · ${escapeHtml(item.payment_method)}` : ''}${item.recurring_id ? '<span class="tx-repeat" title="From a recurring rule">↻</span>' : ''}</div>
     </div>
     <div class="amount${income ? ' income' : ''}">${income ? '+' : '-'}${INR.format(item.amount)}</div>
-    ${compact ? '' : `<button class="delete" data-delete="${escapeHtml(item.id)}" aria-label="Delete ${income ? 'income' : 'expense'}">×</button>`}
+    ${compact ? '' : `<button class="delete" data-delete="${escapeHtml(item.id)}" aria-label="Delete ${income ? 'income' : 'expense'}">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+    </button>`}
   </article>`;
 }
 
@@ -1103,11 +1111,33 @@ function render() {
 
   const groups = groupByDate(items);
   $('#list').innerHTML = groups.length
-    ? groups.map(([key, groupItems]) => `
+    ? groups.map(([key, groupItems]) => {
+        const dayIncome = sum(groupItems.filter(isIncome));
+        const dayExpense = sum(groupItems.filter(isExpense));
+        return `
         <div class="date-group">
-          <div class="date-label">${escapeHtml(formatDayLabel(key))} · ${INR.format(sum(groupItems))}</div>
+          <div class="date-group-card">
+            <div class="date-group-top">
+              <div class="date-group-title">
+                <strong>${escapeHtml(formatDayLabel(key))}</strong>
+                <span>${escapeHtml(formatFullDate(key))}</span>
+              </div>
+              <span class="date-group-badge">${INR.format(sum(groupItems))}</span>
+            </div>
+            <div class="date-group-split">
+              <div class="split-item split-income">
+                <span class="split-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16l6-8 6 8"/></svg></span>
+                <div><small>Income</small><b>${INR.format(dayIncome)}</b></div>
+              </div>
+              <div class="split-item split-expense">
+                <span class="split-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8l6 8 6-8"/></svg></span>
+                <div><small>Expenses</small><b>${INR.format(dayExpense)}</b></div>
+              </div>
+            </div>
+          </div>
           ${groupItems.map(item => row(item)).join('')}
-        </div>`).join('')
+        </div>`;
+      }).join('')
     : '<div class="empty">No expenses match these filters.</div>';
 
   $('#analyticsTotal').textContent = INR.format(chartWindowTotal());
@@ -1143,6 +1173,10 @@ function render() {
 function showTab(name) {
   $$('[data-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === name));
   $$('[data-tab]').forEach(button => button.classList.toggle('nav-active', button.dataset.tab === name));
+  // Transactions carries its own mint/forest theme; redefining the shared
+  // tokens under this class re-skins the chips, cards and bottom nav for
+  // free while that tab is active, and reverts everywhere else untouched.
+  document.body.classList.toggle('tx-theme', name === 'transactions');
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (name === 'add') {
     $('#formError').textContent = '';
@@ -1726,21 +1760,32 @@ $('#preset').onchange = event => { state.preset = event.target.value; render(); 
 $('#search').oninput = event => { state.q = event.target.value; render(); };
 $('#sort').onchange = event => { state.sort = event.target.value; render(); };
 
-$('#payments').onclick = event => {
-  const button = event.target.closest('[data-payment]');
-  if (!button) return;
-  state.payment = button.dataset.payment;
-  $$('[data-payment]').forEach(item => item.classList.toggle('active', item === button));
+/** Type and payment are two independent filters sharing one chip row: "All"
+ * is active only when neither is engaged, and the others toggle their own
+ * dimension without disturbing the other. */
+function syncTxFilterChips() {
+  const allActive = state.type === 'all' && state.payment === 'all';
+  $$('#txFilters [data-reset-filters]').forEach(b => b.classList.toggle('active', allActive));
+  $$('#txFilters [data-type]').forEach(b => b.classList.toggle('active', b.dataset.type === state.type));
+  $$('#txFilters [data-payment]').forEach(b => b.classList.toggle('active', b.dataset.payment === state.payment));
+}
+
+$('#txFilters').onclick = event => {
+  if (event.target.closest('[data-reset-filters]')) {
+    state.type = 'all';
+    state.payment = 'all';
+  } else {
+    const typeButton = event.target.closest('[data-type]');
+    const paymentButton = event.target.closest('[data-payment]');
+    if (typeButton) state.type = typeButton.dataset.type;
+    else if (paymentButton) state.payment = paymentButton.dataset.payment;
+    else return;
+  }
+  syncTxFilterChips();
   render();
 };
 
-$('#entryTypes').onclick = event => {
-  const button = event.target.closest('[data-type]');
-  if (!button) return;
-  state.type = button.dataset.type;
-  $$('#entryTypes [data-type]').forEach(item => item.classList.toggle('active', item === button));
-  render();
-};
+$('#txCalBtn').onclick = () => $('#preset')?.focus();
 
 $('#clear').onclick = () => {
   state.preset = 'all';
@@ -1751,8 +1796,7 @@ $('#clear').onclick = () => {
   $('#preset').value = 'all';
   $('#search').value = '';
   $('#sort').value = 'newest';
-  $$('[data-payment]').forEach(item => item.classList.toggle('active', item.dataset.payment === 'all'));
-  $$('#entryTypes [data-type]').forEach(item => item.classList.toggle('active', item.dataset.type === 'all'));
+  syncTxFilterChips();
   render();
 };
 
@@ -1827,6 +1871,7 @@ if (viewport) {
 applyTheme(storedTheme() || systemTheme());
 
 applyAddType(state.addType);
+syncTxFilterChips();
 render();
 syncProfileKeyUi();
 if (!KEY) showTab('profile');
