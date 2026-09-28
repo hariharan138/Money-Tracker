@@ -255,6 +255,7 @@ Headers: `Content-Type: application/json`, `X-API-Key: <SHORTCUT_API_KEY>`
 | `date` | ISO-8601 datetime | no | defaults to server time (UTC) |
 | `payment_method` | string | no | |
 | `notes` | string | no | |
+| `type` | `expense` \| `income` | no | defaults to `expense` |
 
 Empty strings are treated as "not provided". The server always adds `created_at`
 and Mongo generates the unique `_id` returned as `expense_id`.
@@ -281,6 +282,7 @@ Auth: `X-API-Key` header **or** `?key=` query param (for the browser).
 |---|---|---|
 | `category` | string | exact match |
 | `payment_method` | string | exact match |
+| `type` | `expense` \| `income` | exact match; legacy docs with no `type` count as `expense` |
 | `user` | string | filter to one person (multi-user setups) |
 | `q` | string | case-insensitive search over category/description/notes/payment |
 | `from`, `to` | ISO datetime | filter on `date` |
@@ -361,6 +363,7 @@ curl -X POST https://YOUR-APP.onrender.com/api/recurring \
 | `start_date` | defaults to today, and is the **anchor**: a monthly rule starting on the 5th runs on the 5th |
 | `end_date` | optional; must not precede `start_date` |
 | `payment_method` | optional, `Cash` or `UPI` |
+| `type` | optional, `expense` or `income`; defaults to `expense` — a salary rule is `type: "income"` |
 
 `PATCH` takes any subset — `{"active": false}` pauses a rule — and an omitted
 field is left alone rather than nulled. `DELETE` keeps the expenses the rule
@@ -446,7 +449,13 @@ curl -i -X POST https://YOUR-APP.onrender.com/api/expenses \
 4. Add a **List** action with two items: `Cash` and `UPI`. Immediately after
    it, add **Choose from List** → prompt: "Payment method". This action
    produces the selected value as the **Chosen Item** Magic Variable.
-5. **Get Contents of URL**
+5. Optional — only if you want this Shortcut to log income as well as
+   expenses (a separate Shortcut per type also works, and needs none of
+   this): add another **List** action with two items, `Expense` and
+   `Income`, then **Choose from List** → prompt: "Entry type". `type` is
+   case-insensitive server-side, so `Expense`/`Income` posts straight
+   through with no extra formatting step.
+6. **Get Contents of URL**
    - URL: `https://YOUR-APP.onrender.com/api/expenses`
    - Method: **POST**
    - Headers:
@@ -461,12 +470,16 @@ curl -i -X POST https://YOUR-APP.onrender.com/api/expenses \
      | `category` | Text | *Provided Input* (from step 2) |
      | `description` | Text | *Provided Input* (from step 3) |
      | `payment_method` | Text | *Chosen Item* (from step 4 — **not** the Category input) |
+     | `type` | Text | *(optional)* *Chosen Item* (from step 5, if you added it — omit entirely for an expenses-only Shortcut) |
      | `notes` | Text | *(optional)* |
 
-   In the `payment_method` value field, the variable preview must read
-   **Chosen Item**. If it says *Provided Input*, `Www`, or your category name,
-   delete that value and insert **Chosen Item** again from the Magic Variable
-   picker.
+   In the `payment_method` and `type` value fields, the variable preview
+   must read **Chosen Item**. There are now two Choose from List steps, so
+   the Magic Variable picker shows two "Chosen Item" entries — pick by the
+   step name shown next to each (Shortcuts labels them "Chosen Item from
+   [step]" when more than one exists). If a field shows *Provided Input*,
+   `Www`, or the wrong step's value, delete it and re-insert the correct
+   **Chosen Item**.
 
 That body is equivalent to:
 
@@ -476,6 +489,7 @@ That body is equivalent to:
   "category": "Food",
   "description": "Dinner",
   "payment_method": "UPI",
+  "type": "Expense",
   "notes": "Dinner with friends"
 }
 ```
@@ -484,7 +498,7 @@ Omit `date` and the server timestamps it. To send it explicitly, add a
 `date` (Text) key with a **Format Date** action set to a custom format of
 `yyyy-MM-dd'T'HH:mm:ss`.
 
-5. Optional: **Show Notification** with the `success` / `message` from the response.
+7. Optional: **Show Notification** with the `success` / `message` from the response.
 
 Keep `X-API-Key` only inside the Shortcut — never in a shared link or a webpage.
 

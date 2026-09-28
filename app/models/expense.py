@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -25,6 +26,7 @@ class ExpenseIn(BaseModel):
     date: datetime = Field(default_factory=utcnow, description="Defaults to server time")
     payment_method: str | None = Field(default=None, max_length=100)
     notes: str | None = Field(default=None, max_length=2000)
+    type: Literal["expense", "income"] = "expense"
 
     @field_validator("date", mode="before")
     @classmethod
@@ -58,6 +60,15 @@ class ExpenseIn(BaseModel):
             return methods[v.lower()]
         except (AttributeError, KeyError):
             raise ValueError("payment_method must be Cash or UPI")
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalise_type(cls, v):
+        """Case-insensitive, same courtesy payment_method gets -- a Shortcut's
+        Choose from List menu naturally sends "Expense"/"Income"."""
+        if v in (None, ""):
+            return "expense"
+        return v.strip().lower() if isinstance(v, str) else v
 
 
 class ExpenseCreated(BaseModel):

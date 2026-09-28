@@ -52,12 +52,13 @@
         </div>
       </header>
 
-      <section class="hero" aria-label="Expense balance">
+      <section class="hero" aria-label="Balance">
         <div class="hero-wave" aria-hidden="true"></div>
         <button class="more" type="button" aria-label="More options">•••</button>
         <p class="card-label" id="totalLabel">SPENT THIS MONTH</p>
         <strong id="total">₹0</strong>
         <p id="total-sub">0 transactions</p>
+        <p id="heroBreakdown" class="hero-breakdown"></p>
         <div id="heroRange" class="hero-range" role="group" aria-label="Total spent range">
           <button type="button" data-hero-range="month">This month</button>
           <button type="button" data-hero-range="all">All</button>
@@ -121,6 +122,11 @@
       </header>
       <section class="controls" aria-label="Transaction filters">
         <input id="search" type="search" placeholder="Search transactions" autocomplete="off" enterkeyhint="search">
+        <div id="entryTypes" class="chips" role="group" aria-label="Entry type">
+          <button type="button" class="active" data-type="all">All</button>
+          <button type="button" data-type="expense">Expenses</button>
+          <button type="button" data-type="income">Income</button>
+        </div>
         <div id="payments" class="chips" role="group" aria-label="Payment method">
           <button type="button" class="active" data-payment="all">All</button>
           <button type="button" data-payment="upi">UPI</button>
@@ -154,9 +160,13 @@
     <!-- 3. Add expense (inline on this tab only) -->
     <section class="tab-panel add-panel" data-panel="add">
       <header class="page-head">
-        <h1>Add expense</h1>
+        <h1 id="addTitle">Add expense</h1>
         <p class="page-sub" id="addDateLabel"></p>
       </header>
+      <div id="expenseTypeToggle" class="chips" role="group" aria-label="Entry type">
+        <button type="button" class="active" data-expense-type="expense">Expense</button>
+        <button type="button" data-expense-type="income">Income</button>
+      </div>
       <form id="expenseForm" class="add-form">
         <label>Amount
           <input id="expenseAmount" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="₹ 0.00" required>

@@ -134,6 +134,7 @@ const ICON_SET = {
   education: ['ink', '<path d="M3.6 6.2A12 12 0 0 1 12 7.6a12 12 0 0 1 8.4-1.4v11A12 12 0 0 0 12 18.6a12 12 0 0 0-8.4-1.4z"/><path d="M12 7.6v11"/>'],
   gifts: ['amber', '<rect x="3.4" y="8.6" width="17.2" height="4.2" rx="1"/><path d="M5 12.8v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7M12 8.6v12.2"/><path d="M12 8.6S10.8 4 8.6 4a2.3 2.3 0 0 0 0 4.6zM12 8.6S13.2 4 15.4 4a2.3 2.3 0 0 1 0 4.6z"/>'],
   expense: ['ink', '<path d="M3.5 8.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2"/><rect x="3.5" y="8.5" width="17" height="10.5" rx="2"/><path d="M15.4 13.75h2.6"/>'],
+  income: ['green', '<path d="M4 15.5l6-6 4 4 6-8"/><path d="M14.5 5.5h5.5v5.5"/>'],
 };
 const ICON_FALLBACK = ['ink', '<path d="M4 11.3V5.4a1.4 1.4 0 0 1 1.4-1.4h5.9a1.4 1.4 0 0 1 1 .4l6.3 6.3a1.4 1.4 0 0 1 0 2l-5.9 5.9a1.4 1.4 0 0 1-2 0L4.4 12.3a1.4 1.4 0 0 1-.4-1z"/><circle cx="8.3" cy="8.3" r="1.2"/>'];
 
@@ -165,7 +166,20 @@ const state = {
   // you are in -- an all-time total only grows and never means much. "All" is
   // one tap away for when you do want the lifetime figure.
   heroRange: 'month',
+  // Transactions list filter: 'all' | 'expense' | 'income'.
+  type: 'all',
+  // Which side of the Add form's toggle is selected right now.
+  addType: 'expense',
 };
+
+/** Docs written before income existed carry no `type` field and are all expenses. */
+function isExpense(item) {
+  return (item.type || 'expense') === 'expense';
+}
+
+function isIncome(item) {
+  return item.type === 'income';
+}
 
 function dateOf(value) {
   if (value instanceof Date) return value;
@@ -225,6 +239,8 @@ function filtered() {
 
   return expenses.filter(item => {
     if (from && dateOf(item.date) < from) return false;
+    if (state.type === 'expense' && !isExpense(item)) return false;
+    if (state.type === 'income' && !isIncome(item)) return false;
     if (state.payment !== 'all' && (item.payment_method || '').toLowerCase() !== state.payment) return false;
     return !query || [item.category, item.description, item.notes, item.payment_method].join(' ').toLowerCase().includes(query);
   }).sort(order);
@@ -257,7 +273,11 @@ function groupByDate(items) {
 }
 
 function row(item, compact = false) {
-  const icon = iconMarkup(item.category);
+  const income = isIncome(item);
+  // Income's category (Salary, Freelance…) never matches an expense icon key,
+  // so it would otherwise fall through to the generic ink glyph -- force the
+  // dedicated income icon instead, same tone every time.
+  const icon = iconMarkup(income ? 'income' : item.category);
   const time = dateOf(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   // Expenses logged from the app carry no description; skip the line rather
   // than repeating "Expense" under the category.
@@ -265,12 +285,12 @@ function row(item, compact = false) {
   return `<article class="tx${compact ? ' compact' : ''}">
     ${icon}
     <div class="main">
-      <div class="name">${escapeHtml(item.category || 'Expense')}</div>
+      <div class="name">${escapeHtml(item.category || (income ? 'Income' : 'Expense'))}</div>
       ${desc ? `<div class="desc">${escapeHtml(desc)}</div>` : ''}
       <div class="meta">${escapeHtml(time)}${item.payment_method ? ` · ${escapeHtml(item.payment_method)}` : ''}${item.recurring_id ? '<span class="tx-repeat" title="From a recurring rule">↻</span>' : ''}</div>
     </div>
-    <div class="amount">-${INR.format(item.amount)}</div>
-    ${compact ? '' : `<button class="delete" data-delete="${escapeHtml(item.id)}" aria-label="Delete expense">×</button>`}
+    <div class="amount${income ? ' income' : ''}">${income ? '+' : '-'}${INR.format(item.amount)}</div>
+    ${compact ? '' : `<button class="delete" data-delete="${escapeHtml(item.id)}" aria-label="Delete ${income ? 'income' : 'expense'}">×</button>`}
   </article>`;
 }
 
@@ -282,7 +302,7 @@ function chartBuckets() {
       const key = dayKey(day);
       return {
         label: day.toLocaleDateString(undefined, { weekday: 'narrow' }),
-        total: sum(expenses.filter(item => dayKey(item.date) === key)),
+        total: sum(expenses.filter(item => isExpense(item) && dayKey(item.date) === key)),
       };
     });
   }
@@ -290,6 +310,7 @@ function chartBuckets() {
   if (state.chartRange === 'year') {
     return [...Array(12)].map((_, month) => {
       const total = sum(expenses.filter(item => {
+        if (!isExpense(item)) return false;
         const d = dateOf(item.date);
         return d.getFullYear() === now.getFullYear() && d.getMonth() === month;
       }));
@@ -306,6 +327,7 @@ function chartBuckets() {
   for (let start = 1; start <= daysInMonth; start += step) {
     const end = Math.min(daysInMonth, start + step - 1);
     const total = sum(expenses.filter(item => {
+      if (!isExpense(item)) return false;
       const d = dateOf(item.date);
       const day = d.getDate();
       return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && day >= start && day <= end;
@@ -381,7 +403,7 @@ function renderChart() {
 }
 
 function preferredPayment() {
-  const counts = expenses.reduce((acc, item) => {
+  const counts = expenses.filter(isExpense).reduce((acc, item) => {
     const method = (item.payment_method || '').trim() || '—';
     acc[method] = (acc[method] || 0) + 1;
     return acc;
@@ -400,19 +422,22 @@ function daysInCurrentMonth() {
   return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 }
 
+/** Spend, not net -- income in this span is deliberately excluded. */
 function spendInSpan(from, to) {
   return sum(expenses.filter(item => {
+    if (!isExpense(item)) return false;
     const d = dateOf(item.date);
     return !Number.isNaN(d.getTime()) && d >= from && d <= to;
   }));
 }
 
-/** Expenses dated inside the current calendar month (local). */
+/** Expenses (not income) dated inside the current calendar month (local). */
 function monthExpenses() {
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth(), 1);
   const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
   return expenses.filter(item => {
+    if (!isExpense(item)) return false;
     const d = dateOf(item.date);
     return !Number.isNaN(d.getTime()) && d >= from && d <= to;
   });
@@ -1025,29 +1050,41 @@ function inChartWindow(item) {
 }
 
 function chartWindowTotal() {
-  return sum(expenses.filter(inChartWindow));
+  return sum(expenses.filter(item => isExpense(item) && inChartWindow(item)));
 }
 
 function render() {
   const items = filtered();
   const total = sum(items);
-  // Overview "Today" is always calendar-today spend (all expenses), not filter-dependent.
-  const today = sum(expenses.filter(item => dayKey(item.date) === todayKey()));
-  const allTotal = sum(expenses);
+  // Overview "Today" is always calendar-today spend, not filter-dependent,
+  // and stays expense-only -- a payday doesn't make "today" look cheaper.
+  const today = sum(expenses.filter(item => isExpense(item) && dayKey(item.date) === todayKey()));
+  const allExpenseTotal = sum(expenses.filter(isExpense));
 
   // The hero shows this month by default, or everything when All is picked.
   // Total and count come from the same list, so they can never disagree.
   const heroAll = state.heroRange === 'all';
-  const heroItems = heroAll ? expenses : monthExpenses();
-  const heroTotal = heroAll ? allTotal : sum(heroItems);
+  const now = new Date();
+  const monthFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthTo = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const heroItems = heroAll
+    ? expenses
+    : expenses.filter(item => {
+        const d = dateOf(item.date);
+        return !Number.isNaN(d.getTime()) && d >= monthFrom && d <= monthTo;
+      });
+  const heroIncomeTotal = sum(heroItems.filter(isIncome));
+  const heroExpenseTotal = sum(heroItems.filter(isExpense));
+  const heroTotal = heroIncomeTotal - heroExpenseTotal; // net balance, can go negative
 
   $('#greeting').textContent = greetingForNow();
-  // Say which figure this is. "TOTAL SPENT" above a month's worth reads as a
-  // lifetime total and makes the number look wrong.
-  $('#totalLabel').textContent = heroAll ? 'TOTAL SPENT' : 'SPENT THIS MONTH';
+  $('#totalLabel').textContent = heroAll ? 'TOTAL BALANCE' : 'BALANCE THIS MONTH';
   $('#total').textContent = INR.format(heroTotal);
   $('#total-sub').textContent =
     `${heroItems.length} transaction${heroItems.length === 1 ? '' : 's'}`;
+  $('#heroBreakdown').innerHTML =
+    `<span class="hb-income">Income ${INR.format(heroIncomeTotal)}</span> · ` +
+    `<span class="hb-expense">Expenses ${INR.format(heroExpenseTotal)}</span>`;
   $('#heroDate').textContent = heroAll
     ? 'All time'
     : new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
@@ -1076,7 +1113,7 @@ function render() {
   $('#analyticsTotal').textContent = INR.format(chartWindowTotal());
   $('#analyticsDate').textContent = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
   $('#analyticsStats').innerHTML = expenses
-    .filter(inChartWindow)
+    .filter(item => isExpense(item) && inChartWindow(item))
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 4)
     .map(item => `
@@ -1089,7 +1126,7 @@ function render() {
         <b>-${INR.format(item.amount)}</b>
       </div>`).join('') || '<div class="empty">No spending data yet.</div>';
 
-  $('#profileTotal').textContent = INR.format(allTotal);
+  $('#profileTotal').textContent = INR.format(allExpenseTotal);
   $('#profileCount').textContent = String(expenses.length);
   $('#profilePayment').textContent = preferredPayment();
   $('#addDateLabel').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
@@ -1113,6 +1150,29 @@ function showTab(name) {
   }
 }
 
+const ADD_TYPE_DEFAULT_CATEGORY = { expense: 'Expense', income: 'Income' };
+const ADD_TYPE_CATEGORY_PLACEHOLDER = { expense: 'Food, Travel, Bills…', income: 'Salary, Freelance, Gift…' };
+
+/** Switches the Add form between logging an expense and logging income. */
+function applyAddType(type) {
+  state.addType = type;
+  $$('#expenseTypeToggle [data-expense-type]').forEach(button => {
+    button.classList.toggle('active', button.dataset.expenseType === type);
+  });
+  $('#addTitle').textContent = type === 'income' ? 'Add income' : 'Add expense';
+  const categoryInput = $('#expenseCategory');
+  if (categoryInput) {
+    // Only swap the placeholder-ish default -- never overwrite something the
+    // person actually typed themselves.
+    const otherDefault = ADD_TYPE_DEFAULT_CATEGORY[type === 'income' ? 'expense' : 'income'];
+    if (!categoryInput.value.trim() || categoryInput.value === otherDefault) {
+      categoryInput.value = ADD_TYPE_DEFAULT_CATEGORY[type];
+    }
+    categoryInput.placeholder = ADD_TYPE_CATEGORY_PLACEHOLDER[type];
+  }
+  updateAddPreview();
+}
+
 function updateAddPreview() {
   const amount = Number($('#expenseAmount')?.value || 0);
   $('#addAmountPreview').textContent = INR.format(amount || 0);
@@ -1121,13 +1181,14 @@ function updateAddPreview() {
   const repeat = $('#expenseRepeat')?.value || 'none';
   const hint = $('#repeatHint');
   const button = $('#saveExpense');
+  const noun = state.addType === 'income' ? 'income' : 'expense';
   if (hint) {
     hint.hidden = repeat === 'none';
     hint.textContent = repeat === 'none'
       ? ''
       : `Saved as a rule — ${(FREQUENCY_LABEL[repeat] || repeat).toLowerCase()}, starting today. Manage it from Profile.`;
   }
-  if (button) button.textContent = repeat === 'none' ? 'Save expense' : 'Save recurring expense';
+  if (button) button.textContent = repeat === 'none' ? `Save ${noun}` : `Save recurring ${noun}`;
 }
 
 async function load({ quiet = false } = {}) {
@@ -1226,7 +1287,8 @@ function clearApiKey() {
 }
 
 async function remove(id) {
-  if (!confirm('Delete this expense?')) return;
+  const noun = isIncome(expenses.find(item => item.id === id) || {}) ? 'income' : 'expense';
+  if (!confirm(`Delete this ${noun}?`)) return;
   const response = await apiFetch(`/api/expenses/${encodeURIComponent(id)}`, authed({ method: 'DELETE' }));
   // 404 means it is already gone (e.g. the primary deleted it, then the
   // retried request hit the secondary) — same outcome as a clean delete.
@@ -1234,30 +1296,31 @@ async function remove(id) {
     expenses = expenses.filter(item => item.id !== id);
     render();
   } else {
-    alert('Could not delete this expense.');
+    alert(`Could not delete this ${noun}.`);
   }
 }
 
-async function saveRecurringRule({ amount, category, paymentMethod, repeat, saveButton, error }) {
+async function saveRecurringRule({ amount, category, paymentMethod, repeat, type, saveButton, error }) {
+  const noun = type === 'income' ? 'income' : 'expense';
   saveButton.disabled = true;
   saveButton.textContent = 'Saving…';
-  setStatus('Saving recurring expense…', 'muted');
+  setStatus(`Saving recurring ${noun}…`, 'muted');
   try {
     const response = await apiFetch('/api/recurring', authed({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        amount, category, payment_method: paymentMethod, frequency: repeat,
+        amount, category, payment_method: paymentMethod, frequency: repeat, type,
       }),
     }));
     if (!response.ok) {
       throw new Error(response.status === 409
-        ? 'You have too many recurring expenses.'
-        : 'Could not save this recurring expense.');
+        ? `You have too many recurring ${noun}s.`
+        : `Could not save this recurring ${noun}.`);
     }
     const body = await response.json().catch(() => ({}));
     $('#expenseForm').reset();
-    $('#expenseCategory').value = 'Expense';
+    $('#expenseCategory').value = ADD_TYPE_DEFAULT_CATEGORY[type];
     $('#expenseRepeat').value = 'none';
     updateAddPreview();
     error.textContent = '';
@@ -1266,10 +1329,10 @@ async function saveRecurringRule({ amount, category, paymentMethod, repeat, save
     showTab('transactions');
     const added = body.created_expenses || 0;
     setStatus(added
-      ? `Recurring expense saved · ${added} added`
-      : 'Recurring expense saved');
+      ? `Recurring ${noun} saved · ${added} added`
+      : `Recurring ${noun} saved`);
   } catch (err) {
-    error.textContent = err.message || 'Could not save this recurring expense.';
+    error.textContent = err.message || `Could not save this recurring ${noun}.`;
     setStatus('Save failed — try again', 'err');
   } finally {
     saveButton.disabled = false;
@@ -1279,8 +1342,9 @@ async function saveRecurringRule({ amount, category, paymentMethod, repeat, save
 
 async function saveExpense(event) {
   event.preventDefault();
+  const type = state.addType === 'income' ? 'income' : 'expense';
   const amount = Number($('#expenseAmount').value);
-  const category = ($('#expenseCategory').value.trim() || 'Expense');
+  const category = ($('#expenseCategory').value.trim() || ADD_TYPE_DEFAULT_CATEGORY[type]);
   const paymentMethod = $('#expensePayment').value;
   const error = $('#formError');
 
@@ -1300,7 +1364,7 @@ async function saveExpense(event) {
     // A rule is not an expense: the backend materialises today's occurrence
     // (and any it owes) itself, so there is nothing to show optimistically
     // here — an optimistic row would duplicate the one the reload brings back.
-    await saveRecurringRule({ amount, category, paymentMethod, repeat, saveButton, error });
+    await saveRecurringRule({ amount, category, paymentMethod, repeat, type, saveButton, error });
     return;
   }
   const tempId = `local-${Date.now()}`;
@@ -1312,6 +1376,7 @@ async function saveExpense(event) {
     description: null,
     payment_method: paymentMethod,
     notes: null,
+    type,
     date: nowIso,
     created_at: nowIso,
     user: connectedUserName() || undefined,
@@ -1320,7 +1385,7 @@ async function saveExpense(event) {
   // Show it in the UI immediately, then upload in the background.
   expenses = [optimistic, ...expenses];
   $('#expenseForm').reset();
-  $('#expenseCategory').value = 'Expense';
+  $('#expenseCategory').value = ADD_TYPE_DEFAULT_CATEGORY[type];
   updateAddPreview();
   error.textContent = '';
   render();
@@ -1333,28 +1398,28 @@ async function saveExpense(event) {
     const response = await apiFetch('/api/expenses', authed({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, category, payment_method: paymentMethod }),
+      body: JSON.stringify({ amount, category, payment_method: paymentMethod, type }),
     }));
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
-      throw new Error(detail.includes('ReadableStream') ? 'Could not save this expense. Try again.' : 'Could not save this expense.');
+      throw new Error(detail.includes('ReadableStream') ? `Could not save this ${type}. Try again.` : `Could not save this ${type}.`);
     }
     const created = await response.json().catch(() => ({}));
     if (created.expense_id) {
       expenses = expenses.map(item => (item.id === tempId ? { ...item, id: created.expense_id } : item));
       render();
     }
-    setStatus('Expense saved');
+    setStatus(type === 'income' ? 'Income saved' : 'Expense saved');
     load({ quiet: true }).catch(() => {});
   } catch (err) {
     expenses = expenses.filter(item => item.id !== tempId);
     render();
     showTab('add');
-    error.textContent = err.message || 'Could not save this expense.';
+    error.textContent = err.message || `Could not save this ${type}.`;
     setStatus('Save failed — try again', 'err');
   } finally {
     saveButton.disabled = false;
-    saveButton.textContent = 'Save expense';
+    updateAddPreview();
   }
 }
 
@@ -1636,6 +1701,12 @@ $$('[data-go]').forEach(button => {
   button.onclick = () => showTab(button.dataset.go);
 });
 
+$('#expenseTypeToggle').onclick = event => {
+  const button = event.target.closest('[data-expense-type]');
+  if (!button) return;
+  applyAddType(button.dataset.expenseType);
+};
+
 $('#heroRange').onclick = event => {
   const button = event.target.closest('[data-hero-range]');
   if (!button) return;
@@ -1663,15 +1734,25 @@ $('#payments').onclick = event => {
   render();
 };
 
+$('#entryTypes').onclick = event => {
+  const button = event.target.closest('[data-type]');
+  if (!button) return;
+  state.type = button.dataset.type;
+  $$('#entryTypes [data-type]').forEach(item => item.classList.toggle('active', item === button));
+  render();
+};
+
 $('#clear').onclick = () => {
   state.preset = 'all';
   state.payment = 'all';
+  state.type = 'all';
   state.q = '';
   state.sort = 'newest';
   $('#preset').value = 'all';
   $('#search').value = '';
   $('#sort').value = 'newest';
   $$('[data-payment]').forEach(item => item.classList.toggle('active', item.dataset.payment === 'all'));
+  $$('#entryTypes [data-type]').forEach(item => item.classList.toggle('active', item.dataset.type === 'all'));
   render();
 };
 
@@ -1745,6 +1826,7 @@ if (viewport) {
 
 applyTheme(storedTheme() || systemTheme());
 
+applyAddType(state.addType);
 render();
 syncProfileKeyUi();
 if (!KEY) showTab('profile');

@@ -2,6 +2,7 @@ import json
 import logging
 import re
 from datetime import datetime, time, timedelta
+from typing import Literal
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -47,6 +48,8 @@ def _to_json(d: dict) -> dict:
         "date": d["date"].isoformat() if d.get("date") else None,
         "payment_method": d.get("payment_method"),
         "notes": d.get("notes"),
+        # docs written before income existed carry no `type` at all
+        "type": d.get("type") or "expense",
         "created_at": d["created_at"].isoformat() if d.get("created_at") else None,
         "user": d.get("user") or settings.default_user,
         # set when a recurring rule generated this expense, so the UI can mark
@@ -84,6 +87,7 @@ async def create_expense(
 async def list_expenses(
     category: str | None = Query(default=None, max_length=100),
     payment_method: str | None = Query(default=None, max_length=100),
+    entry_type: Literal["expense", "income"] | None = Query(default=None, alias="type"),
     q: str | None = Query(default=None, max_length=200, description="Search text"),
     date_from: datetime | None = Query(default=None, alias="from"),
     date_to: datetime | None = Query(default=None, alias="to"),
@@ -103,6 +107,10 @@ async def list_expenses(
         query["category"] = category
     if payment_method:
         query["payment_method"] = payment_method
+    if entry_type:
+        # legacy docs (written before income existed) carry no `type` field at
+        # all and are all expenses, same fallback as user_scope uses for `user`
+        query["type"] = entry_type if entry_type != "expense" else {"$in": ["expense", None]}
     if q:
         rx = {"$regex": re.escape(q), "$options": "i"}
         query["$or"] = [

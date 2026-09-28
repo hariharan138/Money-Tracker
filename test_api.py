@@ -334,7 +334,7 @@ def test_list_expenses_auth_and_shape():
     assert body["success"] is True and body["count"] == 2
     e = body["expenses"][0]
     assert set(e) == {"id", "amount", "category", "description", "date",
-                      "payment_method", "notes", "created_at", "user",
+                      "payment_method", "notes", "type", "created_at", "user",
                       "recurring_id"}
     # null on everything logged by hand; set only on generated occurrences
     assert e["recurring_id"] is None

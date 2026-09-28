@@ -101,6 +101,7 @@ class RecurringIn(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     payment_method: str | None = Field(default=None, max_length=100)
     notes: str | None = Field(default=None, max_length=2000)
+    type: Literal["expense", "income"] = "expense"
     # Also the anchor: a monthly rule starting on the 5th runs on the 5th.
     start_date: date = Field(default_factory=today_utc)
     end_date: date | None = None
@@ -121,6 +122,14 @@ class RecurringIn(BaseModel):
             return methods[v.lower()]
         except (AttributeError, KeyError):
             raise ValueError("payment_method must be Cash or UPI")
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalise_type(cls, v):
+        """Same case-insensitive courtesy the one-off expense form offers."""
+        if v in (None, ""):
+            return "expense"
+        return v.strip().lower() if isinstance(v, str) else v
 
     @field_validator("start_date", "end_date", mode="before")
     @classmethod
