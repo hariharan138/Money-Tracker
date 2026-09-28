@@ -288,7 +288,7 @@ function row(item, compact = false) {
   // Expenses logged from the app carry no description; skip the line rather
   // than repeating "Expense" under the category.
   const desc = (item.description || item.notes || '').trim();
-  return `<article class="tx${compact ? ' compact' : ''}">
+  const article = `<article class="tx${compact ? ' compact' : ''}" data-tx-front>
     ${icon}
     <div class="main">
       <div class="name">${escapeHtml(item.category || (income ? 'Income' : 'Expense'))}</div>
@@ -300,6 +300,22 @@ function row(item, compact = false) {
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
     </button>`}
   </article>`;
+  // Compact rows (dashboard preview) sit in a non-scrolling summary and skip
+  // the swipe wrapper entirely -- only the full Transactions list gets it.
+  if (compact) return article;
+  return `<div class="tx-swipe" data-tx-id="${escapeHtml(item.id)}">
+    <div class="tx-swipe-bg">
+      <div class="tx-action tx-action-edit">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        <span>Edit</span>
+      </div>
+      <div class="tx-action tx-action-delete">
+        <span>Delete</span>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4.8a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V7"/><path d="M6 7l1 13a1.5 1.5 0 0 0 1.5 1.4h7a1.5 1.5 0 0 0 1.5-1.4L18 7"/></svg>
+      </div>
+    </div>
+    ${article}
+  </div>`;
 }
 
 function chartBuckets() {
@@ -1330,6 +1346,143 @@ async function remove(id) {
   }
 }
 
+// —— Swipe-to-edit / swipe-to-delete on a Transactions row ——
+
+let editingId = null;
+
+function openEditModal(item) {
+  editingId = item.id;
+  const income = isIncome(item);
+  $$('#editTypeToggle button').forEach(button => {
+    button.classList.toggle('active', button.dataset.editType === (income ? 'income' : 'expense'));
+  });
+  $('#editAmount').value = item.amount;
+  $('#editCategory').value = item.category || '';
+  $('#editPayment').value = item.payment_method === 'Cash' ? 'Cash' : 'UPI';
+  $('#editFormError').textContent = '';
+  $('#editModal').hidden = false;
+  setTimeout(() => $('#editAmount').focus(), 120);
+}
+
+function closeEditModal() {
+  $('#editModal').hidden = true;
+  editingId = null;
+}
+
+async function saveEdit(event) {
+  event.preventDefault();
+  if (!editingId) return;
+  const amount = Number($('#editAmount').value);
+  const category = $('#editCategory').value.trim();
+  const paymentMethod = $('#editPayment').value;
+  const type = $('#editTypeToggle button.active')?.dataset.editType || 'expense';
+  const error = $('#editFormError');
+  if (!amount || amount <= 0) {
+    error.textContent = 'Enter a valid amount.';
+    return;
+  }
+  const saveButton = $('#saveEdit');
+  saveButton.disabled = true;
+  saveButton.textContent = 'Saving…';
+  try {
+    const response = await apiFetch(`/api/expenses/${encodeURIComponent(editingId)}`, authed({
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount, category, payment_method: paymentMethod, type }),
+    }));
+    if (!response.ok) throw new Error('Could not save changes.');
+    const updated = await response.json();
+    expenses = expenses.map(item => (item.id === editingId ? { ...item, ...updated } : item));
+    render();
+    closeEditModal();
+    setStatus('Transaction updated');
+  } catch (err) {
+    error.textContent = err.message || 'Could not save changes.';
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = 'Save changes';
+  }
+}
+
+// A drag beyond this many px commits to the action on release; short of it
+// snaps back. Matches the visual width of the revealed background layer.
+const SWIPE_COMMIT_PX = 72;
+const SWIPE_MAX_PX = 96;
+
+function initSwipeableRows() {
+  const list = $('#list');
+  if (!list) return;
+  let dragEl = null;      // the .tx[data-tx-front] currently being dragged
+  let wrap = null;        // its .tx-swipe ancestor
+  let startX = 0;
+  let startY = 0;
+  let dx = 0;
+  let dragging = false;   // locked into a horizontal swipe
+  let pointerId = null;
+
+  function reset(withTransition = true) {
+    if (dragEl) {
+      dragEl.classList.toggle('tx-snap', withTransition);
+      dragEl.style.transform = '';
+    }
+    dragEl = null;
+    wrap = null;
+    dragging = false;
+    pointerId = null;
+  }
+
+  list.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    const swipe = event.target.closest('.tx-swipe');
+    if (!swipe) return;
+    dragEl = swipe.querySelector('[data-tx-front]');
+    wrap = swipe;
+    startX = event.clientX;
+    startY = event.clientY;
+    dx = 0;
+    dragging = false;
+    pointerId = event.pointerId;
+  });
+
+  list.addEventListener('pointermove', event => {
+    if (!dragEl || event.pointerId !== pointerId) return;
+    const moveX = event.clientX - startX;
+    const moveY = event.clientY - startY;
+    if (!dragging) {
+      if (Math.abs(moveX) < 10 || Math.abs(moveX) < Math.abs(moveY)) return;
+      dragging = true;
+      dragEl.classList.remove('tx-snap');
+      dragEl.setPointerCapture?.(pointerId);
+    }
+    event.preventDefault();
+    dx = Math.max(-SWIPE_MAX_PX, Math.min(SWIPE_MAX_PX, moveX));
+    dragEl.style.transform = `translateX(${dx}px)`;
+    wrap.classList.toggle('tx-swipe-left', dx < -10);
+    wrap.classList.toggle('tx-swipe-right', dx > 10);
+  }, { passive: false });
+
+  function finish() {
+    if (!dragEl) return;
+    const container = wrap;
+    const id = container.dataset.txId;
+    const committed = dragging && Math.abs(dx) >= SWIPE_COMMIT_PX;
+    const goingLeft = dx < 0;
+    reset(true);
+    container.classList.remove('tx-swipe-left', 'tx-swipe-right');
+    if (!committed) return;
+    const item = expenses.find(entry => entry.id === id);
+    if (!item) return;
+    if (goingLeft) {
+      remove(id);
+    } else {
+      openEditModal(item);
+    }
+  }
+
+  list.addEventListener('pointerup', finish);
+  list.addEventListener('pointercancel', finish);
+}
+
 async function saveRecurringRule({ amount, category, paymentMethod, repeat, type, saveButton, error }) {
   const noun = type === 'income' ? 'income' : 'expense';
   saveButton.disabled = true;
@@ -1799,6 +1952,15 @@ $('#clear').onclick = () => {
 $('#list').onclick = event => {
   const button = event.target.closest('[data-delete]');
   if (button) remove(button.dataset.delete);
+};
+initSwipeableRows();
+
+$('#editForm').onsubmit = saveEdit;
+$('#closeEdit').onclick = closeEditModal;
+$('[data-close-edit]').onclick = closeEditModal;
+$('#editTypeToggle').onclick = event => {
+  const button = event.target.closest('[data-edit-type]');
+  if (button) $$('#editTypeToggle button').forEach(b => b.classList.toggle('active', b === button));
 };
 
 $('.more').onclick = openLimitModal;

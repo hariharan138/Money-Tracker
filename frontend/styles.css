@@ -702,6 +702,49 @@ body, .app, .tab-panel, .controls input, .chips button, .filter-selects select,
   line-height: 1;
 }
 
+/* —— Swipe a row: right to edit, left to delete —— */
+
+.tx-swipe {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.tx-swipe-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+}
+
+.tx-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 22px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.tx-action-edit { background: var(--green); opacity: 0.55; transition: opacity 0.15s ease; }
+.tx-action-delete { background: var(--danger); margin-left: auto; opacity: 0.55; transition: opacity 0.15s ease; }
+.tx-swipe.tx-swipe-right .tx-action-edit,
+.tx-swipe.tx-swipe-left .tx-action-delete { opacity: 1; }
+
+.tx-swipe [data-tx-front] {
+  position: relative;
+  z-index: 1;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.tx-swipe [data-tx-front].tx-snap {
+  transition: transform 0.2s ease;
+}
+
 .empty {
   padding: 36px 18px;
   border-radius: 18px;

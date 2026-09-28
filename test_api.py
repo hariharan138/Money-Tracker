@@ -26,6 +26,8 @@ from app.main import app  # noqa: E402
 
 inserted: list[dict] = []
 delete_finds_row = False
+update_finds_row = False
+last_update: dict = {}
 last_query: dict = {}
 limits_store: list[dict] = []
 profiles_store: list[dict] = []
@@ -72,6 +74,25 @@ class FakeCollection:
 
     async def delete_one(self, q):
         return type("R", (), {"deleted_count": 1 if delete_finds_row else 0})()
+
+    async def find_one_and_update(self, query, update, return_document=None):
+        last_update["query"] = query
+        last_update["set"] = update.get("$set", {})
+        if not update_finds_row:
+            return None
+        doc = {
+            "_id": "66c8" + "0" * 20,
+            "amount": 500.0,
+            "category": "Food",
+            "description": "Dinner",
+            "date": __import__("datetime").datetime(2026, 8, 23, 19, 30),
+            "payment_method": "UPI",
+            "notes": None,
+            "type": "expense",
+            "created_at": __import__("datetime").datetime(2026, 8, 23, 19, 30),
+        }
+        doc.update(update.get("$set", {}))
+        return doc
 
 
 class FakeLimitsCollection:
@@ -381,6 +402,28 @@ def test_delete_validation_and_flow():
     delete_finds_row = False
 
 
+def test_update_validation_and_flow():
+    global update_finds_row
+    assert client.patch("/api/expenses/not-an-id?key=test-key", json={"amount": 10}).status_code == 400
+    oid = "66c800000000000000000000"
+    # nothing to change -> 400 before the query ever runs
+    assert client.patch(f"/api/expenses/{oid}?key=test-key", json={}).status_code == 400
+    update_finds_row = False
+    assert client.patch(f"/api/expenses/{oid}?key=test-key", json={"amount": 10}).status_code == 404
+    update_finds_row = True
+    r = client.patch(f"/api/expenses/{oid}?key=test-key",
+                      json={"amount": 750, "category": "Groceries", "payment_method": "cash", "type": "Expense"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["amount"] == 750 and body["category"] == "Groceries"
+    assert body["payment_method"] == "Cash"  # normalised, same as create
+    assert body["type"] == "expense"  # normalised, same as create
+    assert last_update["set"] == {
+        "amount": 750.0, "category": "Groceries", "payment_method": "Cash", "type": "expense",
+    }
+    update_finds_row = False
+
+
 def test_view_page_renders_dashboard():
     r = client.get("/?key=test-key")
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
@@ -493,6 +536,27 @@ def test_delete_is_scoped_to_owner():
         assert r.status_code == 200 and filters[-1]["user"] == "Wife"
     finally:
         FakeCollection.delete_one = orig
+        settings.expense_users = ""
+
+
+def test_update_is_scoped_to_owner():
+    # find_one_and_update's filter must carry the user clause too, so one
+    # person can never edit another person's document even with a valid id
+    filters = []
+    orig = FakeCollection.find_one_and_update
+
+    async def spy(self, query, update, return_document=None):
+        filters.append(query)
+        return {"_id": "66c800000000000000000000", "amount": 1, "category": "Food"} if "user" in query else None
+
+    FakeCollection.find_one_and_update = spy
+    try:
+        settings.expense_users = "Wife:wife-secret-key"
+        oid = "66c800000000000000000000"
+        r = client.patch(f"/api/expenses/{oid}?key=wife-secret-key", json={"amount": 99})
+        assert r.status_code == 200 and filters[-1]["user"] == "Wife"
+    finally:
+        FakeCollection.find_one_and_update = orig
         settings.expense_users = ""
 
 
