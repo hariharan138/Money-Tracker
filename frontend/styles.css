@@ -718,74 +718,11 @@ body, .app, .tab-panel, .controls input, .chips button, .filter-selects select,
   box-shadow: var(--shadow);
 }
 
-/* —— Transactions theme ——
- * Active only while that tab is showing (toggled in showTab()). Redefining
- * the shared tokens here re-skins every component that already reads them
- * (chips, cards, the bottom nav) for free; only the structural pieces new
- * to this page get their own rules below.
- *
- * Light and dark variants, same as the rest of the app: this block is the
- * light default, and :root[data-theme="dark"] below overrides it -- text
- * tokens (--ink/--muted/--soft) are deliberately left alone here so they
- * keep inheriting whichever base theme is active instead of hardcoding one. */
-body.tx-theme {
-  --paper: #f1faf5;
-  --card: #ffffff;
-  --subtle: #eaf7f0;
-  --chip: #e9f6f0;
-  --field: #ffffff;
-  --field-focus: #ffffff;
-  --line: #dcefe4;
-
-  --accent: #17b673;
-  --on-accent: #ffffff;
-
-  --green: #12a866;
-  --danger: #e0464f;
-  --amber-text: #d97a12;
-  --tint-green: #e3f8ec;
-  --tint-amber: #fdf0dc;
-  --tint-red: #fbe7e8;
-  --tint-blue: #e6f0ff;
-  --blue-text: #2f6fed;
-  --tint-purple: #f1e9ff;
-  --purple-text: #8b5cf6;
-
-  --shadow: 0 10px 24px rgba(20, 90, 60, 0.12);
-  --shadow-nav: 0 12px 28px rgba(20, 90, 60, 0.14);
-}
-
-:root[data-theme="dark"] body.tx-theme {
-  --paper: #08201a;
-  --card: #0d241d;
-  --subtle: #112c23;
-  --chip: #10251f;
-  --field: #0d241d;
-  --field-focus: #0f2a22;
-  --line: rgba(255, 255, 255, 0.07);
-  --ink: #eef7f2;
-  --muted: #83a396;
-  --soft: #4f6c60;
-
-  --accent: #78efb6;
-  --on-accent: #06251a;
-
-  --green: #6fe5ae;
-  --danger: #ff6d78;
-  --amber-text: #ffbc3b;
-  --tint-green: #123626;
-  --tint-amber: #3a2a10;
-  --tint-red: #3a1c1f;
-  --tint-blue: #082944;
-  --blue-text: #3d93f2;
-  --tint-purple: #20233f;
-  --purple-text: #c594ff;
-
-  --shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
-  --shadow-nav: 0 12px 28px rgba(0, 0, 0, 0.45);
-}
-
-body.tx-theme .nav-item.nav-active { color: var(--accent); }
+/* —— Transactions page ——
+ * Structural styling only -- colors deliberately come from the app's
+ * normal tokens (--accent, --green, --tint-green, etc.), same as every
+ * other tab, so this page matches the theme the person already has instead
+ * of carrying a look of its own. */
 
 .tx-head {
   display: flex;

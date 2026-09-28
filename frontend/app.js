@@ -1173,10 +1173,6 @@ function render() {
 function showTab(name) {
   $$('[data-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === name));
   $$('[data-tab]').forEach(button => button.classList.toggle('nav-active', button.dataset.tab === name));
-  // Transactions carries its own mint/forest theme; redefining the shared
-  // tokens under this class re-skins the chips, cards and bottom nav for
-  // free while that tab is active, and reverts everywhere else untouched.
-  document.body.classList.toggle('tx-theme', name === 'transactions');
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (name === 'add') {
     $('#formError').textContent = '';
