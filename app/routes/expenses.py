@@ -7,12 +7,13 @@ from typing import Literal
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
+from pymongo import ReturnDocument
 from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import PyMongoError
 
 from ..config import settings
 from ..database import get_collection, get_recurring_collection
-from ..models.expense import ExpenseCreated, ExpenseIn, ensure_utc, utcnow
+from ..models.expense import ExpenseCreated, ExpenseIn, ExpenseUpdate, ensure_utc, utcnow
 from .auth import resolve_user
 from .recurring import catch_up
 
@@ -139,6 +140,36 @@ async def list_expenses(
         media_type="application/json",
         headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
     )
+
+
+@router.patch("/expenses/{expense_id}", summary="Edit one of MY expenses")
+async def update_expense(
+    expense_id: str,
+    patch: ExpenseUpdate,
+    user: str = Depends(resolve_user),
+    collection: AsyncCollection = Depends(get_collection),
+) -> dict:
+    try:
+        oid = ObjectId(expense_id)
+    except (InvalidId, TypeError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid expense id")
+    changes = patch.model_dump(exclude_unset=True, exclude_none=True)
+    if not changes:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No fields to update")
+    try:
+        # ownership check baked into the filter, same as delete: 404 rather
+        # than leaking whether someone else's document exists
+        doc = await collection.find_one_and_update(
+            {"_id": oid, **user_scope(user)},
+            {"$set": changes},
+            return_document=ReturnDocument.AFTER,
+        )
+    except PyMongoError:
+        log.exception("update failed")
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Database error")
+    if doc is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Expense not found")
+    return _to_json(doc)
 
 
 @router.delete("/expenses/{expense_id}", summary="Delete one of MY expenses")

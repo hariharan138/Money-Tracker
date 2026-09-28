@@ -71,6 +71,43 @@ class ExpenseIn(BaseModel):
         return v.strip().lower() if isinstance(v, str) else v
 
 
+class ExpenseUpdate(BaseModel):
+    """Editing a transaction (swipe-right on the row) sends only the fields
+    the edit form carries -- every field optional, same as RecurringUpdate,
+    so an absent field is left alone rather than cleared."""
+
+    amount: float | None = Field(default=None, gt=0)
+    category: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    payment_method: str | None = Field(default=None, max_length=100)
+    notes: str | None = Field(default=None, max_length=2000)
+    type: Literal["expense", "income"] | None = None
+
+    @field_validator("category", "description", "payment_method", "notes", mode="before")
+    @classmethod
+    def _blank_to_none(cls, v):
+        return v.strip() or None if isinstance(v, str) else v
+
+    @field_validator("payment_method")
+    @classmethod
+    def _normalise_payment_method(cls, v):
+        """Same two methods the one-off expense form offers."""
+        if v is None:
+            return None
+        methods = {"cash": "Cash", "upi": "UPI"}
+        try:
+            return methods[v.lower()]
+        except (AttributeError, KeyError):
+            raise ValueError("payment_method must be Cash or UPI")
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalise_type(cls, v):
+        if v in (None, ""):
+            return None
+        return v.strip().lower() if isinstance(v, str) else v
+
+
 class ExpenseCreated(BaseModel):
     success: bool = True
     message: str = "Expense added successfully"
