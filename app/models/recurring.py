@@ -101,6 +101,7 @@ class RecurringIn(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     payment_method: str | None = Field(default=None, max_length=100)
     notes: str | None = Field(default=None, max_length=2000)
+    type: Literal["expense", "income"] = "expense"
     # Also the anchor: a monthly rule starting on the 5th runs on the 5th.
     start_date: date = Field(default_factory=today_utc)
     end_date: date | None = None

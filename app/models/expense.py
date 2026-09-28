@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -25,6 +26,7 @@ class ExpenseIn(BaseModel):
     date: datetime = Field(default_factory=utcnow, description="Defaults to server time")
     payment_method: str | None = Field(default=None, max_length=100)
     notes: str | None = Field(default=None, max_length=2000)
+    type: Literal["expense", "income"] = "expense"
 
     @field_validator("date", mode="before")
     @classmethod

@@ -39,7 +39,7 @@ router = APIRouter(prefix="/api", tags=["recurring"])
 MAX_RULES = 100
 
 # Fields copied verbatim from a rule onto each expense it generates.
-_COPIED = ("amount", "category", "description", "payment_method", "notes")
+_COPIED = ("amount", "category", "description", "payment_method", "notes", "type")
 
 
 def _as_date(value) -> date | None:
@@ -84,6 +84,7 @@ def _to_json(rule: dict) -> dict:
         "description": rule.get("description"),
         "payment_method": rule.get("payment_method"),
         "notes": rule.get("notes"),
+        "type": rule.get("type") or "expense",
         "frequency": rule.get("frequency", "monthly"),
         "start_date": d.isoformat() if (d := _as_date(rule.get("start_date"))) else None,
         "end_date": d.isoformat() if (d := _as_date(rule.get("end_date"))) else None,

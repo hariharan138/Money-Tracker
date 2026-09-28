@@ -322,6 +322,15 @@ h1 {
   font-size: 12px;
 }
 
+.hero-breakdown {
+  margin-top: 2px;
+  color: #b8bcc0;
+  font-size: 12px;
+}
+
+.hero-breakdown .hb-income { color: #4ade80; }
+.hero-breakdown .hb-expense { color: #f87171; }
+
 /* Sits on the hero card, which is dark in both themes, so these are fixed
    light-on-dark rather than tokenised. */
 .hero-range {
@@ -674,6 +683,8 @@ body, .app, .tab-panel, .controls input, .chips button, .filter-selects select,
   white-space: nowrap;
   text-align: right;
 }
+
+.amount.income { color: var(--green); }
 
 .delete {
   width: 28px;

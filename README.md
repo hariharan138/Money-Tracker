@@ -255,6 +255,7 @@ Headers: `Content-Type: application/json`, `X-API-Key: <SHORTCUT_API_KEY>`
 | `date` | ISO-8601 datetime | no | defaults to server time (UTC) |
 | `payment_method` | string | no | |
 | `notes` | string | no | |
+| `type` | `expense` \| `income` | no | defaults to `expense` |
 
 Empty strings are treated as "not provided". The server always adds `created_at`
 and Mongo generates the unique `_id` returned as `expense_id`.
@@ -281,6 +282,7 @@ Auth: `X-API-Key` header **or** `?key=` query param (for the browser).
 |---|---|---|
 | `category` | string | exact match |
 | `payment_method` | string | exact match |
+| `type` | `expense` \| `income` | exact match; legacy docs with no `type` count as `expense` |
 | `user` | string | filter to one person (multi-user setups) |
 | `q` | string | case-insensitive search over category/description/notes/payment |
 | `from`, `to` | ISO datetime | filter on `date` |
@@ -361,6 +363,7 @@ curl -X POST https://YOUR-APP.onrender.com/api/recurring \
 | `start_date` | defaults to today, and is the **anchor**: a monthly rule starting on the 5th runs on the 5th |
 | `end_date` | optional; must not precede `start_date` |
 | `payment_method` | optional, `Cash` or `UPI` |
+| `type` | optional, `expense` or `income`; defaults to `expense` — a salary rule is `type: "income"` |
 
 `PATCH` takes any subset — `{"active": false}` pauses a rule — and an omitted
 field is left alone rather than nulled. `DELETE` keeps the expenses the rule
