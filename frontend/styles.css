@@ -41,6 +41,10 @@
   --tint-green: #e8faf0;
   --tint-amber: #fff4e3;
   --tint-red: #fdeaea;
+  --tint-blue: #eaf2ff;
+  --blue-text: #2f6fed;
+  --tint-purple: #f3ecff;
+  --purple-text: #8b5cf6;
   /* Rotating pastel discs behind transaction icons */
   --tint-1: #f6eef3;
   --tint-2: #eef6ff;
@@ -99,6 +103,10 @@
   --tint-green: #143025;
   --tint-amber: #382b14;
   --tint-red: #3b1f1f;
+  --tint-blue: #16283e;
+  --blue-text: #6ea8ff;
+  --tint-purple: #251f3a;
+  --purple-text: #b794f6;
   --tint-1: #2c2430;
   --tint-2: #1e2a38;
   --tint-3: #322a1a;
@@ -646,6 +654,8 @@ body, .app, .tab-panel, .controls input, .chips button, .filter-selects select,
 .icon.tone-green { background: var(--tint-green); color: var(--green); }
 .icon.tone-amber { background: var(--tint-amber); color: var(--amber-text); }
 .icon.tone-ink { background: var(--subtle); color: var(--ink); }
+.icon.tone-blue { background: var(--tint-blue); color: var(--blue-text); }
+.icon.tone-purple { background: var(--tint-purple); color: var(--purple-text); }
 
 /* Top spending reuses the same disc, one size down. */
 .top-item .icon {
@@ -707,6 +717,191 @@ body, .app, .tab-panel, .controls input, .chips button, .filter-selects select,
   text-align: center;
   box-shadow: var(--shadow);
 }
+
+/* —— Transactions theme ——
+ * Active only while that tab is showing (toggled in showTab()). Redefining
+ * the shared tokens here re-skins every component that already reads them
+ * (chips, cards, the bottom nav) for free; only the structural pieces new
+ * to this page get their own rules below. */
+body.tx-theme {
+  --paper: #08201a;
+  --card: #0d241d;
+  --subtle: #112c23;
+  --chip: #10251f;
+  --field: #0d241d;
+  --field-focus: #0f2a22;
+  --line: rgba(255, 255, 255, 0.07);
+  --ink: #eef7f2;
+  --muted: #83a396;
+  --soft: #4f6c60;
+
+  --accent: #78efb6;
+  --on-accent: #06251a;
+
+  --green: #6fe5ae;
+  --danger: #ff6d78;
+  --amber-text: #ffbc3b;
+  --tint-green: #123626;
+  --tint-amber: #3a2a10;
+  --tint-red: #3a1c1f;
+  --tint-blue: #082944;
+  --blue-text: #3d93f2;
+  --tint-purple: #20233f;
+  --purple-text: #c594ff;
+
+  --shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  --shadow-nav: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+body.tx-theme .nav-item.nav-active { color: var(--accent); }
+
+.tx-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tx-cal-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--tint-green);
+  color: var(--green);
+}
+
+.tx-filter-chips { flex-wrap: wrap; }
+
+.tx-filter-chips button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+}
+
+.tx-filter-selects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tx-select {
+  position: relative;
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  align-items: center;
+}
+
+.tx-select svg {
+  position: absolute;
+  left: 14px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.tx-select select { padding-left: 38px; }
+
+.tx-reset-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--green);
+}
+
+.date-group-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.date-group-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.date-group-title strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.date-group-title span {
+  display: block;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.date-group-badge {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--tint-green);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.date-group-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.split-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.split-item:first-child {
+  padding-right: 12px;
+  border-right: 1px solid var(--line);
+}
+
+.split-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+.split-income .split-icon { background: var(--tint-green); color: var(--green); }
+.split-expense .split-icon { background: var(--tint-red); color: var(--danger); }
+
+.split-item small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.split-item b {
+  display: block;
+  margin-top: 1px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.split-income b { color: var(--green); }
+.split-expense b { color: var(--danger); }
+
+.delete svg { display: block; }
 
 /* —— Floating pill nav (matches image.png) —— */
 /* —— Floating Liquid-Glass bottom nav —— */
