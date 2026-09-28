@@ -1555,6 +1555,11 @@ body.keyboard-open .bottom-nav { display: none; }
   -webkit-tap-highlight-color: transparent;
 }
 
+/* .profile-card sets display:flex, which otherwise beats the [hidden]
+   attribute's default display:none (author styles win over the UA
+   stylesheet regardless of selector specificity). */
+.profile-card-button[hidden] { display: none; }
+
 .profile-card-button svg {
   color: var(--muted);
   flex: none;

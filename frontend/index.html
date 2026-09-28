@@ -229,7 +229,7 @@
       <div class="profile-card"><span>Total expenses</span><strong id="profileTotal">₹0</strong></div>
       <div class="profile-card"><span>Transactions recorded</span><strong id="profileCount">0</strong></div>
       <div class="profile-card"><span>Preferred payment</span><strong id="profilePayment">—</strong></div>
-      <button class="profile-card profile-card-button" id="manageRecurring" type="button">
+      <button class="profile-card profile-card-button" id="manageRecurring" type="button" hidden>
         <span>Recurring expenses</span>
         <strong id="profileRecurringCount">0</strong>
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
@@ -251,7 +251,7 @@
         </div>
       </div>
 
-      <div class="profile-key" id="authBox">
+      <div class="profile-key" id="authBox" hidden>
         <label for="authUsername">Account</label>
         <p class="profile-key-hint">Log in, or create an account. Your expenses, limit and photo are private to your account.</p>
         <div id="authForm">
@@ -279,7 +279,8 @@
       <div class="profile-key" id="apiKeyBox">
         <label for="apiKeyInput">API key</label>
         <p class="profile-key-hint">Only if you were given a key instead of an account &mdash; from the server
-          <code>.env</code> (<code>SHORTCUT_API_KEY</code> or an <code>EXPENSE_USERS</code> key). Saved only on this device.</p>
+          <code>.env</code> (<code>SHORTCUT_API_KEY</code> or an <code>EXPENSE_USERS</code> key). Saved only on this
+          device. Locked &mdash; you'll be asked for a PIN before this can be changed.</p>
         <input id="apiKeyInput" class="profile-key-input" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your API key">
         <p id="apiKeyStatus" class="profile-key-status" aria-live="polite"></p>
         <div class="profile-key-actions">
