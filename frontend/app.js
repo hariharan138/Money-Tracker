@@ -1086,13 +1086,13 @@ function render() {
   const heroTotal = heroIncomeTotal - heroExpenseTotal; // net balance, can go negative
 
   $('#greeting').textContent = greetingForNow();
-  $('#totalLabel').textContent = heroAll ? 'TOTAL BALANCE' : 'BALANCE THIS MONTH';
-  $('#total').textContent = INR.format(heroTotal);
-  $('#total-sub').textContent =
-    `${heroItems.length} transaction${heroItems.length === 1 ? '' : 's'}`;
+  // Expenses lead as the headline figure -- that's the number people check
+  // day to day -- with income and the net balance underneath as context.
+  $('#totalLabel').textContent = heroAll ? 'TOTAL SPENT' : 'SPENT THIS MONTH';
+  $('#total').textContent = INR.format(heroExpenseTotal);
   $('#heroBreakdown').innerHTML =
     `<span class="hb-income">Income ${INR.format(heroIncomeTotal)}</span> · ` +
-    `<span class="hb-expense">Expenses ${INR.format(heroExpenseTotal)}</span>`;
+    `<span class="${heroTotal >= 0 ? 'hb-income' : 'hb-expense'}">Balance ${INR.format(heroTotal)}</span>`;
   $('#heroDate').textContent = heroAll
     ? 'All time'
     : new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
