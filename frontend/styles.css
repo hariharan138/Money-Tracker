@@ -781,6 +781,7 @@ body, .app, .tab-panel, .controls input, .chips button, .filter-selects select,
   padding: 16px;
   border-radius: 18px;
   background: var(--card);
+  border: 1px solid var(--line);
   box-shadow: var(--shadow);
 }
 
