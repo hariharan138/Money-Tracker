@@ -61,6 +61,15 @@ class ExpenseIn(BaseModel):
         except (AttributeError, KeyError):
             raise ValueError("payment_method must be Cash or UPI")
 
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalise_type(cls, v):
+        """Case-insensitive, same courtesy payment_method gets -- a Shortcut's
+        Choose from List menu naturally sends "Expense"/"Income"."""
+        if v in (None, ""):
+            return "expense"
+        return v.strip().lower() if isinstance(v, str) else v
+
 
 class ExpenseCreated(BaseModel):
     success: bool = True

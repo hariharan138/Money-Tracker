@@ -123,6 +123,14 @@ class RecurringIn(BaseModel):
         except (AttributeError, KeyError):
             raise ValueError("payment_method must be Cash or UPI")
 
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalise_type(cls, v):
+        """Same case-insensitive courtesy the one-off expense form offers."""
+        if v in (None, ""):
+            return "expense"
+        return v.strip().lower() if isinstance(v, str) else v
+
     @field_validator("start_date", "end_date", mode="before")
     @classmethod
     def _blank_date_to_none(cls, v):
