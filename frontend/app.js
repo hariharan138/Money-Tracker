@@ -1179,6 +1179,23 @@ async function load({ quiet = false } = {}) {
   }
 }
 
+// Not real security -- this is bundled client JS, so the PIN is visible to
+// anyone who opens dev tools. It's a deterrent against an idle tap or someone
+// else picking up the phone, not against a determined attacker.
+const API_KEY_PIN = '1303';
+
+function confirmApiKeyPin() {
+  const entered = prompt('Enter PIN to change the API key');
+  if (entered === null) return false; // cancelled
+  if (entered !== API_KEY_PIN) {
+    const status = $('#apiKeyStatus');
+    status.textContent = 'Incorrect PIN';
+    status.className = 'profile-key-status err';
+    return false;
+  }
+  return true;
+}
+
 async function saveApiKey() {
   const next = ($('#apiKeyInput').value || '').trim();
   const status = $('#apiKeyStatus');
@@ -1342,12 +1359,12 @@ async function saveExpense(event) {
 }
 
 $('#profileRefresh').onclick = () => load();
-$('#saveApiKey').onclick = saveApiKey;
-$('#clearApiKey').onclick = clearApiKey;
+$('#saveApiKey').onclick = () => { if (confirmApiKeyPin()) saveApiKey(); };
+$('#clearApiKey').onclick = () => { if (confirmApiKeyPin()) clearApiKey(); };
 $('#apiKeyInput').addEventListener('keydown', event => {
   if (event.key === 'Enter') {
     event.preventDefault();
-    saveApiKey();
+    if (confirmApiKeyPin()) saveApiKey();
   }
 });
 $('#expenseForm').onsubmit = saveExpense;
