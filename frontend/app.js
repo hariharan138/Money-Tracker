@@ -1099,7 +1099,11 @@ function render() {
       });
   const heroIncomeTotal = sum(heroItems.filter(isIncome));
   const heroExpenseTotal = sum(heroItems.filter(isExpense));
-  const heroTotal = heroIncomeTotal - heroExpenseTotal; // net balance, can go negative
+  // Balance is a running total, not scoped to the selected period -- last
+  // month's leftover carries into this one, same as a real account balance.
+  // Always all-time income minus all-time expenses, even while the headline
+  // figure above it is showing just this month's spend.
+  const heroTotal = sum(expenses.filter(isIncome)) - sum(expenses.filter(isExpense));
 
   $('#greeting').textContent = greetingForNow();
   // Expenses lead as the headline figure -- that's the number people check
